@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Paketleme (kurulum exe GitHub Releases ile yayınlanır)
+build/
+dist/
+setup/Output/
+
+# Uygulama verisi (geliştirme kopyaları)
+*.db
+config.json
