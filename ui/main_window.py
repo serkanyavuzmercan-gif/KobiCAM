@@ -67,7 +67,6 @@ from ui.camera_widget import KAMERA_MIME
 from ui.help_dialog import HelpDialog, ShortcutsDialog
 from ui.settings_dialog import SettingsDialog
 from ui.web_portal_dialog import WebPortalDialog
-from web_server import WebServerThread
 
 _log = get_logger("ui")
 
@@ -334,11 +333,8 @@ class MainWindow(QMainWindow):
         self._gdrive_isci: GDriveSyncThread | None = None
         self._an_isci = None
         self._an_giren = 0
-        self._web_isci: WebServerThread | None = None
-        self._web_url = ""
         self._gdrive_imza: tuple | None = None
         self._an_imza: tuple | None = None
-        self._web_imza: tuple | None = None
         self._modulleri_uygula()
 
     def _arayuz_kur(self) -> None:
@@ -816,13 +812,15 @@ class MainWindow(QMainWindow):
         self._menu_modulleri_guncelle()
 
     def _web_adres(self) -> None:
-        acik = bool(self._config.get("web_enabled"))
+        from utils.network_helper import yerel_health, portal_url
+
+        port = int(self._config.get("web_port") or 8765)
+        saglik = yerel_health(port)
+        acik = bool(saglik)
         url = ""
         if acik:
-            from utils.network_helper import portal_url
-
-            port = int(self._config.get("web_port") or 8765)
-            url = portal_url(port) or self._web_url or f"http://127.0.0.1:{port}"
+            ts = str((saglik or {}).get("tailscale") or "")
+            url = portal_url(port) or (f"http://{ts}:{port}" if ts else f"http://127.0.0.1:{port}")
         WebPortalDialog(url, acik, self).exec()
 
     def _menu_modulleri_guncelle(self) -> None:
@@ -836,7 +834,6 @@ class MainWindow(QMainWindow):
     def _modulleri_uygula(self) -> None:
         self._gdrive_uygula()
         self._analitik_uygula()
-        self._web_uygula()
         self._menu_modulleri_guncelle()
 
     def _gdrive_imza_al(self) -> tuple:
@@ -860,15 +857,6 @@ class MainWindow(QMainWindow):
             str(cfg.get("analytics_camera_id") or ""),
             cizgi_t,
             int(cfg.get("analytics_fps") or 5),
-        )
-
-    def _web_imza_al(self) -> tuple:
-        cfg = self._config
-        return (
-            bool(cfg.get("web_enabled")),
-            str(cfg.get("web_bind") or "0.0.0.0"),
-            int(cfg.get("web_port") or 8765),
-            int(cfg.get("web_max_streams") or 4),
         )
 
     def _gdrive_uygula(self) -> None:
@@ -927,24 +915,6 @@ class MainWindow(QMainWindow):
             bu = calisiyor and str(kam.get("id") or "") == kid
             hucre.set_analiz(bu, giren if bu else 0)
 
-    def _web_uygula(self) -> None:
-        imza = self._web_imza_al()
-        if imza == self._web_imza:
-            return
-        self._web_durdur()
-        self._web_imza = imza
-        if not self._config.get("web_enabled"):
-            return
-        self._web_isci = WebServerThread(self._config, self)
-        self._web_isci.url_hazir.connect(self._web_url_al)
-        self._web_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
-        self._web_isci.start()
-
-    def _web_url_al(self, url: str) -> None:
-        self._web_url = url
-        self._config.set("web_last_url", url, kaydet=True)
-        self.statusBar().showMessage(f"Web portal: {url}", 10000)
-
     def _bulut_durdur(self) -> None:
         self._seg_kayit.stop()
         if self._gdrive_isci is not None:
@@ -963,15 +933,6 @@ class MainWindow(QMainWindow):
         self._an_imza = None
         self._an_giren = 0
         self._analitik_hucreleri_guncelle(False, 0)
-
-    def _web_durdur(self) -> None:
-        if self._web_isci is None:
-            return
-        self._web_isci.request_stop()
-        self._web_isci.wait(3000)
-        self._web_isci = None
-        self._web_imza = None
-        self._web_url = ""
 
     def _snapshot_bildir(self, yol: str) -> None:
         self.statusBar().showMessage(f"Anlık görüntü kaydedildi: {yol}")
@@ -1600,4 +1561,3 @@ class MainWindow(QMainWindow):
     def _modulleri_durdur_hepsi(self) -> None:
         self._bulut_durdur()
         self._analitik_durdur()
-        self._web_durdur()

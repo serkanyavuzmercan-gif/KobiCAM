@@ -3,7 +3,7 @@
 ; Derlemek için: ..\build_release.bat  veya  ISCC.exe ..\KobiCAM_Setup.iss
 
 #define MyAppName "KobiCAM VMS"
-#define MyAppVersion "1.2.2"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "Serkan Yavuz Mercan"
 #define MyAppCopyright "Tüm hakları saklıdır."
 #define MyAppExeName "KobiCAM.exe"
@@ -20,7 +20,7 @@ DefaultDirName={autopf}\KobiCAM
 DefaultGroupName=KobiCAM
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=KobiCAM-Setup-1.2.2
+OutputBaseFilename=KobiCAM-Setup-1.3.0
 SetupIconFile=..\assets\kobicam.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64

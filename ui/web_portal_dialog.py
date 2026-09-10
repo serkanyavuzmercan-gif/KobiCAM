@@ -100,9 +100,9 @@ class WebPortalDialog(QDialog):
 
         if not acik or not (url or "").strip():
             notu = QLabel(
-                "Yayın kapalı. Ayarlar → Web / mobil’de «Yayını başlat» kutusunu "
-                "işaretleyip Kaydet’e basın. Uzaktan izlemek için PC ve telefonda "
-                "Tailscale açık ve aynı hesapta olmalıdır."
+                "Yayın kapalı. Saat yanındaki KobiCAM Server Gateway çalışıyor olmalı. "
+                "Ayarlar → Sunucu Bağlantı Durumu sekmesinde Aktif görünene kadar bekleyin. "
+                "PC ve telefonda Tailscale aynı hesapta olsun."
             )
             notu.setObjectName("not")
             notu.setWordWrap(True)

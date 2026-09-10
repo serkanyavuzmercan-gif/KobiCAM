@@ -147,11 +147,11 @@ _BOLUMLER: list[tuple[str, str]] = [
     ),
     (
         "14. Uzak izleme (web / telefon)",
-        "Ayarlar → Web / mobil’de «Yayını başlat» kutusunu işaretleyip Kaydet’e basın. "
-        "PC ve telefonunuza Tailscale yükleyip aynı hesapla giriş yapın. Durum yeşil "
-        "olunca Portal adresini (http://100.x.y.z:8765) telefon tarayıcısına yazın; "
-        "farklı Wi-Fi ve hücresel veride de çalışır. Giriş, KobiCAM kullanıcı adı ve "
-        "şifrenizledir. Üst menü: Uzak izleme (Ctrl+Shift+W).",
+        "Yayın, saat yanındaki KobiCAM Server Gateway uygulamasındadır; masaüstü VMS "
+        "kapanınca kesilmez. PC ve telefona Tailscale yükleyip aynı hesapla giriş yapın. "
+        "Ayarlar → Sunucu Bağlantı Durumu yeşil Aktif olunca Portal adresini "
+        "(http://100.x.y.z:8765) telefon tarayıcısına yazın veya QR kodu okutun. "
+        "Giriş, KobiCAM kullanıcı adı ve şifrenizledir. Üst menü: Uzak izleme (Ctrl+Shift+W).",
     ),
 ]
 

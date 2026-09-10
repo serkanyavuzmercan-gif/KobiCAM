@@ -116,3 +116,20 @@ def tailscale_adresi_mi(url_veya_ip: str) -> bool:
 
         ham = urlparse(ham).hostname or ""
     return _cgnat_mi(ham) or ham.startswith("100.")
+
+
+def yerel_health(port: int, zaman_asimi: float = 0.8) -> dict | None:
+    """Tray sunucusunun 127.0.0.1 /api/health yanıtı; yoksa None."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    try:
+        yol = f"http://127.0.0.1:{int(port)}/api/health"
+        with urllib.request.urlopen(yol, timeout=zaman_asimi) as cevap:
+            veri = json.loads(cevap.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError, TimeoutError):
+        return None
+    if not isinstance(veri, dict) or not veri.get("ok"):
+        return None
+    return veri

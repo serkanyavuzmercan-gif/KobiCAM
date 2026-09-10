@@ -3,7 +3,7 @@
 Windows için yerel ağ kamera / DVR izleme yazılımı.  
 Local-network camera and DVR monitoring software for Windows.
 
-**Sürüm / Version:** 1.2.2  
+**Sürüm / Version:** 1.3.0  
 **Geliştirici / Author:** Serkan Yavuz Mercan  
 **İletişim / Contact:** [serkanyavuzmercan@gmail.com](mailto:serkanyavuzmercan@gmail.com)
 
@@ -15,11 +15,12 @@ Local-network camera and DVR monitoring software for Windows.
 
 Kurulum dosyası kaynak kodun yanında [Releases](../../releases) sayfasındadır:
 
-- **[KobiCAM-Setup-1.2.2.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.3.0.exe](../../releases/latest)** — Masaüstü VMS, Windows 10/11 (64-bit)
+- **[KobiCAM-Server-Setup-1.0.exe](../../releases/latest)** — Server Gateway (saat yanı), Windows 10/11 (64-bit)
 
 Kurulum sihirbazını çalıştırın. İsterseniz masaüstü kısayolu oluşturun. İlk açılışta kendi kullanıcı hesabınızı tanımlarsınız.
 
-1.2.2 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
+1.3.0 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
 
 ### Ne işe yarar?
 
@@ -77,10 +78,11 @@ GPU yoksa CPU’da `yolov8n` ve varsayılan 5 fps kullanılır. Model `assets/yo
 
 ### Web / mobil portal
 
-Varsayılan kapalıdır. **Ayarlar → Web / mobil** içinde **Yayını başlat** kutusunu işaretleyip Kaydet’e basın. Giriş, KobiCAM kullanıcı adı/şifresidir. RTSP adresleri tarayıcıya gitmez. En fazla 4 kamera.
+Yayın **KobiCAM Server Gateway** (saat yanı) üzerindedir; masaüstü VMS kapanınca kesilmez. `python server_app.py` veya `KobiCAM-Server-Setup.exe`. Giriş, KobiCAM kullanıcı adı/şifresidir. RTSP adresleri tarayıcıya gitmez. En fazla 4 kamera.
 
-- Aynı Wi-Fi: `http://<pc-ip>:8765` (varsayılan port 8765)
-- Farklı Wi-Fi / hücresel: PC ve telefona [Tailscale](https://tailscale.com) kurup aynı hesapla giriş yapın. **Ayarlar → Web / mobil** yeşil **Tailscale Bağlı: 100.x.y.z** gösterince Portal adresini (`http://100.x.y.z:8765`) tarayıcıya yazın. DVR portlarını internete açmayın; PC, KobiCAM ve Tailscale açık olmalıdır.
+- Durum: **Ayarlar → Sunucu Bağlantı Durumu** (Aktif/Pasif, URL, QR)
+- Port: **Ayarlar → Web / mobil** (varsayılan 8765)
+- Farklı Wi-Fi / hücresel: PC ve telefona [Tailscale](https://tailscale.com) aynı hesap. Adres `http://100.x.y.z:8765`. DVR portlarını internete açmayın.
 
 ### Kaynak koddan çalıştırma
 
@@ -89,6 +91,7 @@ Python 3.10+ gerekir.
 ```bat
 pip install -r requirements.txt
 python main.py
+python server_app.py
 ```
 
 Not: `opencv-python` (GUI) kurulmaz; `opencv-python-headless` kullanılır.
@@ -99,9 +102,10 @@ Gerekenler: Python, [Inno Setup 6](https://jrsoftware.org/isinfo.php). Paket bü
 
 ```bat
 build_release.bat
+build_server.bat
 ```
 
-Çıktı: `setup\Output\KobiCAM-Setup-1.2.2.exe` (Inno Setup 6 gerekir). Eski yol: `setup.bat`.
+Çıktı: `setup\Output\KobiCAM-Setup-1.3.0.exe` ve `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
 
 ### Lisans
 
@@ -115,11 +119,12 @@ Tüm hakları saklıdır. Serkan Yavuz Mercan.
 
 The Windows installer is published on the [Releases](../../releases) page (not inside the source tree):
 
-- **[KobiCAM-Setup-1.2.2.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.3.0.exe](../../releases/latest)** — Desktop VMS, Windows 10/11 (64-bit)
+- **[KobiCAM-Server-Setup-1.0.exe](../../releases/latest)** — Server Gateway (system tray), Windows 10/11 (64-bit)
 
 Run the wizard. Optionally create a desktop shortcut. On first launch you create your own user account.
 
-The 1.2.2 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
+The 1.3.0 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
 
 ### What it is
 
@@ -177,10 +182,11 @@ On CPU, `yolov8n` at 5 fps is the default. The weights file is `assets/yolov8n.p
 
 ### Web / mobile portal
 
-Off by default. Under **Settings → Web / mobile**, check **Start broadcast** and click Save. Login uses the same KobiCAM username/password. RTSP URLs are never sent to the browser. At most 4 cameras.
+The stream runs in **KobiCAM Server Gateway** (system tray); closing the desktop VMS does not stop it. `python server_app.py` or `KobiCAM-Server-Setup.exe`. Login uses the KobiCAM username/password. RTSP URLs are never sent to the browser. At most 4 cameras.
 
-- Same Wi-Fi: `http://<pc-ip>:8765` (default port 8765)
-- Different Wi-Fi / cellular: install [Tailscale](https://tailscale.com) on the PC and phone with the same account. When **Settings → Web / mobile** shows green **Tailscale connected: 100.x.y.z**, open the portal URL (`http://100.x.y.z:8765`) on the phone. Do not expose DVR ports; the PC, KobiCAM and Tailscale must stay running.
+- Status: **Settings → Server connection** (Active/Idle, URL, QR)
+- Port: **Settings → Web / mobile** (default 8765)
+- Different Wi-Fi / cellular: [Tailscale](https://tailscale.com) on PC and phone, same account. URL `http://100.x.y.z:8765`. Do not expose DVR ports.
 
 ### Run from source
 
@@ -189,6 +195,7 @@ Python 3.10+ is required.
 ```bat
 pip install -r requirements.txt
 python main.py
+python server_app.py
 ```
 
 Note: GUI `opencv-python` is not installed; use `opencv-python-headless`.
@@ -199,9 +206,10 @@ Requires Python and [Inno Setup 6](https://jrsoftware.org/isinfo.php). The packa
 
 ```bat
 build_release.bat
+build_server.bat
 ```
 
-Output: `setup\Output\KobiCAM-Setup-1.2.2.exe` (requires Inno Setup 6). Legacy: `setup.bat`.
+Output: `setup\Output\KobiCAM-Setup-1.3.0.exe` and `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
 
 ### License
 

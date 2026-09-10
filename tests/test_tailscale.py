@@ -43,6 +43,12 @@ def test_yoksa_none(monkeypatch) -> None:
     assert portal_url(8765) == ""
 
 
+def test_yerel_health_yok() -> None:
+    from utils.network_helper import yerel_health
+
+    assert yerel_health(1) is None
+
+
 def test_psutil_tailscale_arayuz(monkeypatch) -> None:
     import socket
     import sys

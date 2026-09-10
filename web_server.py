@@ -103,6 +103,23 @@ def _uygulama():
         cevap.delete_cookie("kobicam_token")
         return cevap
 
+    @app.get("/api/health")
+    def saglik():
+        from utils.network_helper import get_tailscale_ip
+
+        port = 8765
+        if _CONFIG is not None:
+            try:
+                port = int(_CONFIG.get("web_port") or 8765)
+            except (TypeError, ValueError):
+                port = 8765
+        return {
+            "ok": True,
+            "yayin": True,
+            "port": port,
+            "tailscale": get_tailscale_ip() or "",
+        }
+
     @app.get("/api/me")
     def ben(request: Request):
         ad = _kullanici(request)

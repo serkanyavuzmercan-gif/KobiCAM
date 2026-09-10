@@ -1,5 +1,5 @@
 """
-KobiCAM 1.2.2 stres / birim testleri.
+KobiCAM 1.3.0 stres / birim testleri.
 
 Gerçek kamera veya Google hesabı gerekmez.
 Çalıştırma: pip install pytest httpx psutil && python -m pytest tests -q
@@ -106,6 +106,13 @@ def test_fastapi_login_jwt_hls(tmp_path: Path) -> None:
 
     r = istemci.get("/api/me")
     assert r.status_code == 200
+
+    r = istemci.get("/api/health")
+    assert r.status_code == 200
+    saglik = r.json()
+    assert saglik.get("ok") is True
+    assert saglik.get("yayin") is True
+    assert "port" in saglik
 
     r = istemci.get("/api/cameras")
     assert r.status_code == 200

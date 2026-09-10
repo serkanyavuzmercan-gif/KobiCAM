@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -126,6 +126,7 @@ class SettingsDialog(QDialog):
         sekmeler.addTab(self._sekme_drive(), "Bulut")
         sekmeler.addTab(self._sekme_analitik(), "Analitik")
         sekmeler.addTab(self._sekme_web(), "Web / mobil")
+        sekmeler.addTab(self._sekme_sunucu(), "Sunucu Bağlantı Durumu")
         kok.addWidget(sekmeler, 1)
 
         dugmeler = QDialogButtonBox(
@@ -139,9 +140,11 @@ class SettingsDialog(QDialog):
         self._an_timer = QTimer(self)
         self._an_timer.timeout.connect(self._canli_analitik_yenile)
         self._an_timer.timeout.connect(self._tailscale_yenile)
+        self._an_timer.timeout.connect(self._sunucu_durum_yenile)
         self._an_timer.start(2000)
         self._canli_analitik_yenile()
         self._tailscale_yenile()
+        self._sunucu_durum_yenile()
 
     def _sekme_genel(self) -> QWidget:
         kutu = QWidget()
@@ -332,8 +335,6 @@ class SettingsDialog(QDialog):
         kutu = QWidget()
         form = QFormLayout(kutu)
         cfg = self._config
-        self._web_acik = QCheckBox("Yayını başlat")
-        self._web_acik.setChecked(bool(cfg.get("web_enabled")))
         self._web_bind = QLineEdit(str(cfg.get("web_bind") or "0.0.0.0"))
         self._web_port = QSpinBox()
         self._web_port.setRange(1024, 65535)
@@ -342,36 +343,45 @@ class SettingsDialog(QDialog):
         self._web_max.setRange(1, 4)
         self._web_max.setValue(int(cfg.get("web_max_streams") or 4))
         self._web_port.valueChanged.connect(self._tailscale_yenile)
+        self._web_port.valueChanged.connect(self._sunucu_durum_yenile)
         ts_kutu = QGroupBox("Tailscale ile Güvenli Uzak Erişim")
         ts_y = QVBoxLayout(ts_kutu)
         self._ts_durum = QLabel("🔴 Tailscale Çalışmıyor")
         self._ts_durum.setWordWrap(True)
         ts_y.addWidget(self._ts_durum)
-        self._web_url = QLineEdit()
-        self._web_url.setReadOnly(True)
-        self._web_url.setPlaceholderText("Tailscale bağlıysa otomatik dolar")
-        kopya = QPushButton("Kopyala")
-        kopya.clicked.connect(self._web_url_kopyala)
-        self._web_qr = QPushButton("QR kod")
-        self._web_qr.setEnabled(False)
-        self._web_qr.clicked.connect(self._web_qr_goster)
-        url_satir = QWidget()
-        url_y = QHBoxLayout(url_satir)
-        url_y.setContentsMargins(0, 0, 0, 0)
-        url_y.addWidget(self._web_url, 1)
-        url_y.addWidget(kopya)
-        url_y.addWidget(self._web_qr)
-        form.addRow(self._web_acik)
         form.addRow("Dinleme adresi", self._web_bind)
         form.addRow("Port", self._web_port)
         form.addRow("En fazla HLS yayın", self._web_max)
         form.addRow(ts_kutu)
-        form.addRow("Portal adresi", url_satir)
         ipucu = QLabel(
-            "1. «Yayını başlat» kutusunu işaretleyip Kaydet’e basın.\n"
-            "2. PC ve telefonunuza Tailscale yükleyip aynı hesapla giriş yapın.\n"
-            "3. Farklı Wi-Fi veya hücresel verideyken Portal Adresini "
-            "(http://100.x.y.z:8765) telefon tarayıcısına yazın."
+            "Yayın, saat yanındaki KobiCAM Server Gateway uygulamasındadır. "
+            "VMS’i kapatsanız da yayın kesilmez. Port ve dinleme adresi burada kaydedilir; "
+            "sunucu aynı config.json dosyasını okur."
+        )
+        ipucu.setWordWrap(True)
+        form.addRow(ipucu)
+        return kutu
+
+    def _sekme_sunucu(self) -> QWidget:
+        kutu = QWidget()
+        form = QFormLayout(kutu)
+        self._srv_durum = QLabel("Pasif")
+        self._srv_url = QLineEdit()
+        self._srv_url.setReadOnly(True)
+        self._srv_url.setPlaceholderText("Sunucu çalışınca dolar")
+        kopya = QPushButton("Bağlantı Adresini Kopyala")
+        kopya.clicked.connect(self._web_url_kopyala)
+        self._srv_qr = QLabel()
+        self._srv_qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._srv_qr.setMinimumHeight(160)
+        self._srv_qr.setText("QR kod için sunucu ve Tailscale gerekli")
+        form.addRow("Sunucu yayın durumu", self._srv_durum)
+        form.addRow("Tailscale adresi", self._srv_url)
+        form.addRow(kopya)
+        form.addRow("Mobil bağlantı QR", self._srv_qr)
+        ipucu = QLabel(
+            "Saat yanındaki KobiCAM Server Gateway çalışıyorsa durum Aktif olur. "
+            "Telefon aynı Tailscale hesabıyla bu adresi tarayıcıya yazar."
         )
         ipucu.setWordWrap(True)
         form.addRow(ipucu)
@@ -380,24 +390,55 @@ class SettingsDialog(QDialog):
     def _tailscale_yenile(self) -> None:
         if not hasattr(self, "_ts_durum"):
             return
-        from utils.network_helper import get_tailscale_ip, portal_url
+        from utils.network_helper import get_tailscale_ip
 
         ip = get_tailscale_ip()
-        port = int(self._web_port.value() if hasattr(self, "_web_port") else 8765)
         if ip:
             self._ts_durum.setText(f"🟢 Tailscale Bağlı: {ip}")
             self._ts_durum.setStyleSheet("color: #5dca7a; font-weight: 700;")
-            adres = portal_url(port)
-            self._web_url.setText(adres)
-            self._web_qr.setEnabled(bool(adres))
         else:
             self._ts_durum.setText("🔴 Tailscale Çalışmıyor")
             self._ts_durum.setStyleSheet("color: #e07070; font-weight: 700;")
-            self._web_url.clear()
-            self._web_qr.setEnabled(False)
+
+    def _sunucu_durum_yenile(self) -> None:
+        if not hasattr(self, "_srv_durum"):
+            return
+        from utils.network_helper import yerel_health, portal_url
+
+        port = int(self._web_port.value() if hasattr(self, "_web_port") else 8765)
+        saglik = yerel_health(port)
+        if saglik:
+            self._srv_durum.setText("Aktif")
+            self._srv_durum.setStyleSheet("color: #5dca7a; font-weight: 700;")
+            ts = str(saglik.get("tailscale") or "")
+            adres = portal_url(port) or (f"http://{ts}:{port}" if ts else f"http://127.0.0.1:{port}")
+            self._srv_url.setText(adres)
+            self._qr_goster(adres if ts else "")
+        else:
+            self._srv_durum.setText("Pasif")
+            self._srv_durum.setStyleSheet("color: #e07070; font-weight: 700;")
+            self._srv_url.clear()
+            self._qr_goster("")
+
+    def _qr_goster(self, url: str) -> None:
+        if not hasattr(self, "_srv_qr"):
+            return
+        if not url:
+            self._srv_qr.setPixmap(QPixmap())
+            self._srv_qr.setText("QR kod için sunucu ve Tailscale gerekli")
+            return
+        from ui.web_portal_dialog import _qr_pixmap
+
+        pm = _qr_pixmap(url, 180)
+        if pm is not None and not pm.isNull():
+            self._srv_qr.setText("")
+            self._srv_qr.setPixmap(pm)
+        else:
+            self._srv_qr.setPixmap(QPixmap())
+            self._srv_qr.setText(url)
 
     def _web_qr_goster(self) -> None:
-        url = self._web_url.text().strip()
+        url = self._srv_url.text().strip() if hasattr(self, "_srv_url") else ""
         if not url:
             return
         from ui.web_portal_dialog import WebPortalDialog
@@ -482,23 +523,23 @@ class SettingsDialog(QDialog):
         self._config.set("analytics_camera_id", str(self._an_kamera.currentData() or ""), kaydet=False)
         self._config.set("analytics_fps", int(self._an_fps.value()), kaydet=False)
 
-        self._config.set("web_enabled", self._web_acik.isChecked(), kaydet=False)
         self._config.set("web_bind", self._web_bind.text().strip() or "0.0.0.0", kaydet=False)
         self._config.set("web_port", int(self._web_port.value()), kaydet=False)
         self._config.set("web_max_streams", int(self._web_max.value()), kaydet=False)
-        adres = self._web_url.text().strip()
+        adres = self._srv_url.text().strip() if hasattr(self, "_srv_url") else ""
         if adres:
             self._config.set("web_last_url", adres, kaydet=False)
         self._config.save()
         self.accept()
 
     def _web_url_kopyala(self) -> None:
-        metin = self._web_url.text().strip()
+        metin = self._srv_url.text().strip() if hasattr(self, "_srv_url") else ""
         if not metin:
             QMessageBox.information(
                 self,
                 "Uzak izleme",
-                "Tailscale bağlı değil. PC’de Tailscale’i açıp aynı hesapla giriş yapın.",
+                "Sunucu Gateway çalışmıyor veya Tailscale adresi yok. "
+                "Saat yanındaki KobiCAM Server’ı başlatın.",
             )
             return
         QApplication.clipboard().setText(metin)
