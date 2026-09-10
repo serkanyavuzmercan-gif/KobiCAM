@@ -3,7 +3,7 @@
 Windows için yerel ağ kamera / DVR izleme yazılımı.  
 Local-network camera and DVR monitoring software for Windows.
 
-**Sürüm / Version:** 1.2.0  
+**Sürüm / Version:** 1.2.1  
 **Geliştirici / Author:** Serkan Yavuz Mercan  
 **İletişim / Contact:** [serkanyavuzmercan@gmail.com](mailto:serkanyavuzmercan@gmail.com)
 
@@ -15,11 +15,11 @@ Local-network camera and DVR monitoring software for Windows.
 
 Kurulum dosyası kaynak kodun yanında [Releases](../../releases) sayfasındadır:
 
-- **[KobiCAM-Setup-1.2.0.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.2.1.exe](../../releases/latest)** — Windows 10/11 (64-bit)
 
 Kurulum sihirbazını çalıştırın. İsterseniz masaüstü kısayolu oluşturun. İlk açılışta kendi kullanıcı hesabınızı tanımlarsınız.
 
-1.2.0 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
+1.2.1 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
 
 ### Ne işe yarar?
 
@@ -34,10 +34,11 @@ KobiCAM, ofis veya işyerindeki **kayıt cihazı (DVR/NVR)** ve IP kameraları a
 - Canlı kayıt (MP4: görüntü kopya, ses AAC) ve anlık görüntü
 - PTZ, dijital yakınlaştırma, HD/SD, canlı ses
 - Tanılama (F8): bu bilgisayarın IP’si, ping, açık portlar
+- Cihaz IP’si değişince **MAC ile otomatik yeniden bağlanma**
 - Özel pencere çubuğu, klavye kısayolları (Yardım → Klavye kısayolları)
-- **Google Drive** döngüsel segment senkronu (OAuth, isteğe bağlı)
-- **Analitik:** tek kamerada insan sayımı ve kalma süresi (YOLOv8n + ByteTrack)
-- **Web / mobil portal:** JWT + HLS, en fazla 4 yayın; isteğe bağlı ngrok
+- **Bulut (Google Drive)** döngüsel segment senkronu (OAuth, isteğe bağlı)
+- **Analitik:** tek kamerada insan sayımı ve kalma süresi; canlı panel ve hücre etiketi
+- **Web / mobil portal:** aynı Wi-Fi veya Ngrok ile uzaktan; QR kod; en fazla 4 yayın
 
 ### Kullanım (kısa)
 
@@ -58,7 +59,7 @@ Manuel kırmızı kayıt butonu değişmez. Drive, seçili kameralar için ayrı
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Enable **Google Drive API**.
 2. Credentials → Create credentials → **OAuth client ID** → Application type **Desktop app**.
-3. Client ID ve Client secret’ı **Ayarlar → Google Drive** alanlarına yapıştırın.
+3. Client ID ve Client secret’ı **Ayarlar → Bulut** alanlarına yapıştırın.
 4. **Google’a bağlan** — tarayıcı açılır; token `%APPDATA%\KobiCAM\gdrive_token.json` dosyasına yazılır.
 5. Senkronlanacak kameraları işaretleyip Drive senkronunu açın.
 
@@ -69,19 +70,17 @@ Kapsam: `drive.file` (yalnızca uygulamanın oluşturduğu dosyalar). Kota dolar
 Tek kamera, ayrı düşük FPS FFmpeg borusu; ızgara görüntüsü kilitlenmez.
 
 1. **Ayarlar → Analitik** ile açın ve kamerayı seçin.
-2. **Analitik → İnsan sayımı (Ctrl+Shift+A)** penceresinde kare üzerine **iki tıklama** ile sayım çizgisi çizin ve kaydedin.
-3. Giren / çıkan / ortalama kalma süresi `analytics.db` içinde tutulur; pencerede saatlik çubuk grafik vardır.
+2. Üst menüden **Analitik (Ctrl+Shift+A)** penceresinde kare üzerine **iki tıklama** ile sayım çizgisi çizin ve kaydedin.
+3. Giren / çıkan / ortalama kalma süresi `analytics.db` içinde tutulur; Ayarlar’daki canlı panelde son 24 saat özeti vardır.
 
 GPU yoksa CPU’da `yolov8n` ve varsayılan 5 fps kullanılır. Model `assets/yolov8n.pt` içindedir.
 
 ### Web / mobil portal
 
-Varsayılan kapalıdır. Açılınca FastAPI `0.0.0.0:8765` (ayarlanabilir) dinler. Giriş, KobiCAM kullanıcı adı/şifresidir; JWT yaklaşık 12 saat geçerlidir. RTSP adresleri API’de görünmez. En fazla 4 HLS yeniden kodlama.
+Varsayılan kapalıdır. **Ayarlar → Web / mobil** içinde **Yayını başlat** kutusunu işaretleyip Kaydet’e basın. Giriş, KobiCAM kullanıcı adı/şifresidir. RTSP adresleri tarayıcıya gitmez. En fazla 4 kamera.
 
-- LAN: `http://<pc-ip>:8765`
-- WAN: **Ayarlar → Web** içinde ngrok authtoken; adres durum çubuğunda ve **Uzak izleme (Ctrl+Shift+W)** menüsünde. DVR portlarını internete açmayın; PC ve KobiCAM açık olmalıdır.
-
-Safari native HLS, Chrome için hls.js kullanır.
+- Aynı Wi-Fi: `http://<pc-ip>:8765` (varsayılan port 8765)
+- Farklı Wi-Fi / dışarıdan: **Uzaktan / farklı Wi-Fi’dan izle (Ngrok)** ve Ngrok anahtarı; adres **Portal adresi** alanında ve **Uzak izleme (Ctrl+Shift+W)** penceresinde (QR ile). DVR portlarını internete açmayın; PC ve KobiCAM açık olmalıdır.
 
 ### Kaynak koddan çalıştırma
 
@@ -102,7 +101,7 @@ Gerekenler: Python, [Inno Setup 6](https://jrsoftware.org/isinfo.php). Paket bü
 build_release.bat
 ```
 
-Çıktı: `setup\Output\KobiCAM-Setup-1.2.0-TEST.exe` (Inno Setup 6 gerekir). Eski yol: `setup.bat`.
+Çıktı: `setup\Output\KobiCAM-Setup-1.2.1.exe` (Inno Setup 6 gerekir). Eski yol: `setup.bat`.
 
 ### Lisans
 
@@ -116,11 +115,11 @@ Tüm hakları saklıdır. Serkan Yavuz Mercan.
 
 The Windows installer is published on the [Releases](../../releases) page (not inside the source tree):
 
-- **[KobiCAM-Setup-1.2.0.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.2.1.exe](../../releases/latest)** — Windows 10/11 (64-bit)
 
 Run the wizard. Optionally create a desktop shortcut. On first launch you create your own user account.
 
-The 1.2.0 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
+The 1.2.1 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
 
 ### What it is
 
@@ -135,10 +134,11 @@ KobiCAM is a video management client for **DVR/NVR recorders** and IP cameras on
 - Live recording (MP4: video copy, audio AAC) and snapshots
 - PTZ, digital zoom, HD/SD, live audio
 - Diagnostics (F8): this PC’s IP, ping, open ports
+- **MAC-based auto-reconnect** when a device IP changes
 - Custom title bar and keyboard shortcuts (Help → Keyboard shortcuts)
-- **Google Drive** cyclic segment sync (OAuth, optional)
-- **Analytics:** people counting and dwell time on one camera (YOLOv8n + ByteTrack)
-- **Web / mobile portal:** JWT + HLS, up to 4 streams; optional ngrok
+- **Cloud (Google Drive)** cyclic segment sync (OAuth, optional)
+- **Analytics:** people counting and dwell time; live status panel and cell overlay
+- **Web / mobile portal:** same Wi-Fi or remote via Ngrok; QR code; up to 4 streams
 
 ### Quick start
 
@@ -159,7 +159,7 @@ The manual red record button is unchanged. Drive writes separate 5-minute (defau
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → enable **Google Drive API**.
 2. Credentials → Create credentials → **OAuth client ID** → Application type **Desktop app**.
-3. Paste Client ID and secret under **Settings → Google Drive**.
+3. Paste Client ID and secret under **Settings → Cloud**.
 4. **Connect to Google** — a browser window opens; the token is stored at `%APPDATA%\KobiCAM\gdrive_token.json`.
 5. Check cameras to sync and enable Drive sync.
 
@@ -170,19 +170,17 @@ Scope: `drive.file`. If quota is exceeded, the queue pauses and the status bar s
 One camera only, on a separate low-FPS FFmpeg pipe so the live grid does not stall.
 
 1. Enable it under **Settings → Analytics** and pick the camera.
-2. **Analytics → People counting (Ctrl+Shift+A)**: click twice on the preview to draw the counting line and save it.
-3. In / out / average dwell are stored in `analytics.db`; the window shows today’s hourly bars.
+2. Open **Analytics (Ctrl+Shift+A)**, click twice on the preview to draw the counting line and save it.
+3. In / out / average dwell are stored in `analytics.db`; Settings shows a last-24-hour live summary.
 
 On CPU, `yolov8n` at 5 fps is the default. The weights file is `assets/yolov8n.pt`.
 
 ### Web / mobile portal
 
-Off by default. When enabled, FastAPI listens on `0.0.0.0:8765` (configurable). Login uses the same KobiCAM username/password; JWT lasts about 12 hours. RTSP URLs are never sent to the browser. At most 4 HLS re-encodes.
+Off by default. Under **Settings → Web / mobile**, check **Start broadcast** and click Save. Login uses the same KobiCAM username/password. RTSP URLs are never sent to the browser. At most 4 cameras.
 
-- LAN: `http://<pc-ip>:8765`
-- WAN: ngrok authtoken under **Settings → Web**; the public URL is in the status bar and **Remote viewing (Ctrl+Shift+W)**. Do not expose DVR ports; the PC and KobiCAM must stay running.
-
-Safari uses native HLS; Chrome uses hls.js.
+- Same Wi-Fi: `http://<pc-ip>:8765` (default port 8765)
+- Different Wi-Fi / remote: enable **Remote / other Wi-Fi (Ngrok)** and enter your Ngrok key; the URL appears under **Portal address** and **Remote viewing (Ctrl+Shift+W)** (QR). Do not expose DVR ports; the PC and KobiCAM must stay running.
 
 ### Run from source
 
@@ -203,7 +201,7 @@ Requires Python and [Inno Setup 6](https://jrsoftware.org/isinfo.php). The packa
 build_release.bat
 ```
 
-Output: `setup\Output\KobiCAM-Setup-1.2.0-TEST.exe` (requires Inno Setup 6). Legacy: `setup.bat`.
+Output: `setup\Output\KobiCAM-Setup-1.2.1.exe` (requires Inno Setup 6). Legacy: `setup.bat`.
 
 ### License
 

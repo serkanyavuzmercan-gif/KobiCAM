@@ -104,7 +104,7 @@ _BOLUMLER: list[tuple[str, str]] = [
         "Kayıt, görüntüyü yeniden sıkıştırmadan olduğu gibi diske yazar; bu yüzden "
         "kalite kaybı olmaz ve işlemciyi yormaz. MP4 seçiliyse kamera sesi (pcm_alaw) "
         "MP4'e sığmadığı için ses AAC olarak yazılır; görüntü yine kopyadır.\n"
-        "Dosyaların nereye kaydedileceğini Ayarlar → Tercihler bölümünden seçersiniz. "
+        "Dosyaların nereye kaydedileceğini Ayarlar’dan seçersiniz. "
         "Dosya menüsündeki Kayıt klasörünü aç ile klasöre hızlıca ulaşabilirsiniz.",
     ),
     (
@@ -133,30 +133,26 @@ _BOLUMLER: list[tuple[str, str]] = [
         "ızgara hücresine uygulanır; hücreyi tek tıklayarak seçersiniz.",
     ),
     (
-        "12. Google Drive (isteğe bağlı)",
-        "Ayarlar → Google Drive ile döngüsel bulut kaydını açarsınız. Google Cloud’da "
-        "Desktop OAuth istemcisi oluşturup Client ID ve secret’ı yapıştırın, ardından "
-        "Google’a bağlanın. Seçili kameralar 5 dakikalık (varsayılan) MP4 segmentleri "
-        "yazar; yükleme sonrası Drive’da 120 saatten eski dosyalar silinir.\n"
-        "EN: Optional cyclic upload via Installed App OAuth (drive.file). Token is stored "
-        "in %APPDATA%\\KobiCAM\\gdrive_token.json. Retention default is 120 hours.",
+        "12. Bulut (isteğe bağlı)",
+        "Ayarlar → Bulut’ta hesabınızı bağlayın ve otomatik senkronu açın. "
+        "Seçtiğiniz kameraların kayıtları buluta gider. Sistem 5 günden eski videoları "
+        "kendiliğinden siler; disk dolmaz. Kırmızı kayıt düğmesi değişmez.",
     ),
     (
         "13. Analitik (insan sayımı)",
-        "Tek kamerada YOLOv8n + ByteTrack çalışır; ızgaradaki diğer hücreler etkilenmez. "
-        "Ayarlar’dan Analitik’i açın, Analitik → İnsan sayımı ile kare üzerine iki tıklama "
-        "ile sayım çizgisi çizin. Giren/çıkan ve ortalama kalma süresi SQLite’a yazılır.\n"
-        "EN: One camera only, separate low-FPS FFmpeg pipe. Draw a 0–1 normalized line on "
-        "the preview; hourly bars show today’s in/out counts.",
+        "Tek bir kamerada insan sayısı ve içeride kalma süresi izlenir; diğer hücreler "
+        "etkilenmez. Ayarlar’dan Analitik’i açın, üst menüden Analitik’e tıklayın, "
+        "kare üzerine iki kez tıklayarak sayım çizgisini çizin. Giren, çıkan ve ortalama "
+        "kalma süresi kaydedilir; Ayarlar’daki canlı panelde son 24 saat özeti görünür.",
     ),
     (
         "14. Uzak izleme (web / telefon)",
-        "Ayarlar → Web ile yerel portal açılır (varsayılan port 8765). Aynı KobiCAM "
-        "kullanıcı adı/şifresiyle giriş yapılır; yayın HLS’tir, en fazla 4 kamera. "
-        "Ngrok token varsa WAN adresi durum çubuğunda görünür; yoksa LAN IP kullanın. "
-        "DVR portlarını internete açmanız gerekmez. Menü: Uzak izleme (Ctrl+Shift+W).\n"
-        "EN: FastAPI + JWT (~12 h). HLS is JWT/cookie protected. WAN needs the PC and "
-        "KobiCAM running; default web_enabled is off.",
+        "Ayarlar → Web / mobil’de «Yayını başlat» kutusunu işaretleyip Kaydet’e basın. "
+        "Aynı Wi-Fi’daysanız telefon tarayıcısına bilgisayarın IP adresi ve portunu yazın. "
+        "Farklı Wi-Fi veya dışarıdan izlemek için «Uzaktan / farklı Wi-Fi’dan izle» "
+        "kutusunu açın, Ngrok anahtarını girin; Kaydet sonrası Portal adresindeki "
+        "bağlantıyı kullanın. Giriş, KobiCAM kullanıcı adı ve şifrenizledir. "
+        "Üst menü: Uzak izleme (Ctrl+Shift+W).",
     ),
 ]
 
@@ -218,17 +214,17 @@ KISAYOLLAR: list[tuple[str, list[tuple[str, str]]]] = [
     (
         "Ayarlar ve Yardım",
         [
-            ("Tercihler", "Ctrl+,"),
+            ("Ayarlar", "Ctrl+,"),
             ("Nasıl çalışır?", "F1"),
             ("Klavye kısayolları", "Ctrl+F1"),
             ("İletişim", "Shift+F1"),
         ],
     ),
     (
-        "Bulut / Analitik / Uzak izleme",
+        "Analitik / Uzak izleme",
         [
-            ("İnsan sayımı", "Ctrl+Shift+A"),
-            ("Portal adresini göster", "Ctrl+Shift+W"),
+            ("Analitik penceresi", "Ctrl+Shift+A"),
+            ("Uzak izleme", "Ctrl+Shift+W"),
         ],
     ),
 ]

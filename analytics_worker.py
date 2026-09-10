@@ -8,7 +8,7 @@ from __future__ import annotations
 import gc
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +144,23 @@ def saatlik_bugun(kamera_id: str) -> list[tuple[str, int, int, float]]:
             (kamera_id, f"{gun}%"),
         ).fetchall()
     return [(str(a), int(b), int(c), float(d)) for a, b, c, d in satirlar]
+
+
+def saatlik_son_24saat(kamera_id: str) -> tuple[int, int, float]:
+    """Son 24 saatte (giren, çıkan, ortalama kalma süresi saniye)."""
+    kesim = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:00:00Z")
+    with _baglan() as bag:
+        satirlar = bag.execute(
+            "SELECT in_count, out_count, avg_dwell_sec FROM hourly "
+            "WHERE camera_id=? AND hour_start>=?",
+            (kamera_id, kesim),
+        ).fetchall()
+    giren = sum(int(a) for a, _b, _c in satirlar)
+    cikan = sum(int(b) for _a, b, _c in satirlar)
+    if cikan <= 0:
+        return giren, cikan, 0.0
+    agirlik = sum(float(c) * int(b) for _a, b, c in satirlar)
+    return giren, cikan, agirlik / cikan
 
 
 def model_yolu() -> Path:

@@ -30,6 +30,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QMenu,
     QToolButton,
     QWidget,
@@ -273,6 +274,22 @@ class CameraWidget(QWidget):
         self._overlay.hide()
         self._cubuk_guncelleniyor = False
 
+        self._analiz_etiket = QLabel(self)
+        self._analiz_etiket.setObjectName("analizEtiket")
+        self._analiz_etiket.setStyleSheet(
+            "QLabel#analizEtiket {"
+            " background-color: rgba(22, 90, 48, 210);"
+            " color: #d8ffe8;"
+            " border-radius: 4px;"
+            " padding: 3px 8px;"
+            " font-size: 11px;"
+            " font-weight: 700;"
+            "}"
+        )
+        self._analiz_etiket.hide()
+        self._analiz_aktif = False
+        self._analiz_giren = 0
+
         self.setObjectName("CameraWidget")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
@@ -324,6 +341,7 @@ class CameraWidget(QWidget):
             self._hata = ""
             self._overlay.set_ptz_visible(False)
             self._overlay.set_aktif(False)
+            self.set_analiz(False)
             if self.underMouse():
                 self._cubugu_goster()
             else:
@@ -366,6 +384,28 @@ class CameraWidget(QWidget):
         if kalite == "low":
             return False
         return not self._prefer_sub
+
+    def set_analiz(self, aktif: bool, giren: int = 0) -> None:
+        """Sağ üstte analitik etiketi; yalnızca bu hücre analiz kamerasıysa."""
+        self._analiz_aktif = bool(aktif)
+        self._analiz_giren = int(giren)
+        if self._analiz_aktif:
+            self._analiz_etiket.setText(f"ANALİZ AKTİF | Giren: {self._analiz_giren}")
+            self._analiz_etiket.adjustSize()
+            self._analiz_etiket.show()
+            self._analiz_konumla()
+            self._analiz_etiket.raise_()
+        else:
+            self._analiz_etiket.hide()
+
+    def _analiz_konumla(self) -> None:
+        if not self._analiz_etiket.isVisible():
+            return
+        ipucu = self._analiz_etiket.sizeHint()
+        w = max(ipucu.width(), 140)
+        h = max(ipucu.height(), 22)
+        x = max(4, self.width() - w - 8)
+        self._analiz_etiket.setGeometry(x, 8, w, h)
 
     def _overlay_kalite_guncelle(self) -> None:
         self._overlay.set_hd(self._hedef_kalite_yuksek())
@@ -702,6 +742,7 @@ class CameraWidget(QWidget):
 
     def resizeEvent(self, event) -> None:
         self._overlay_konumla()
+        self._analiz_konumla()
         super().resizeEvent(event)
 
     def _cubugu_goster(self) -> None:

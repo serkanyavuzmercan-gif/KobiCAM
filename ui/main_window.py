@@ -50,9 +50,11 @@ from PyQt6.QtWidgets import (
 from app_info import APP_DISPLAY_NAME, APP_EMAIL, logo_pixmap, uygulama_ikonu
 
 from config_manager import ConfigManager
-from gdrive_sync import GDriveSyncThread, kuyruga_ekle, token_yolu
-from network_scanner import NetworkScanner, yerel_ipv4_adresleri
+from device_reconnector import AG_KOPUK, ip_bul_mac
+from gdrive_sync import GDriveSyncThread, kuyruga_ekle
+from network_scanner import NetworkScanner, mac_normalize, yerel_ipv4_adresleri
 from onvif_media import cihaz_baglan, cihaz_tani
+from app_log import get_logger
 from record_session import SegmentRecorder
 from rtsp_probe import SABLONLAR, kanallari_uret
 from ui.about_dialog import AboutDialog
@@ -64,7 +66,10 @@ from ui.bar_icons import ikon_buyut, ikon_kapat, ikon_kucult
 from ui.camera_widget import KAMERA_MIME
 from ui.help_dialog import HelpDialog, ShortcutsDialog
 from ui.settings_dialog import SettingsDialog
+from ui.web_portal_dialog import WebPortalDialog
 from web_server import WebServerThread
+
+_log = get_logger("ui")
 
 
 _STIL = """
@@ -248,7 +253,7 @@ class _KanalKesif(QThread):
         super().__init__(parent)
         self._cihaz = dict(cihaz)
 
-    def run(self) -> None:
+    def _baglan(self) -> dict:
         sonuc = cihaz_baglan(
             str(self._cihaz.get("ip") or ""),
             str(self._cihaz.get("username") or ""),
@@ -261,6 +266,30 @@ class _KanalKesif(QThread):
             int(self._cihaz.get("media_port") or 0),
         )
         sonuc["device_id"] = str(self._cihaz.get("id") or "")
+        return sonuc
+
+    def run(self) -> None:
+        eski_ip = str(self._cihaz.get("ip") or "")
+        sonuc = self._baglan()
+        sonuc["eski_ip"] = eski_ip
+        kod = str(sonuc.get("hata_kod") or "")
+        mac = mac_normalize(str(self._cihaz.get("mac_address") or "")) or mac_normalize(
+            str(sonuc.get("mac_address") or "")
+        )
+        if (not sonuc.get("ok")) and kod in AG_KOPUK and mac:
+            yeni = ip_bul_mac(
+                mac,
+                eski_ip,
+                int(self._cihaz.get("onvif_port") or 80),
+                int(self._cihaz.get("port") or 554),
+            )
+            if yeni:
+                self._cihaz["ip"] = yeni
+                sonuc = self._baglan()
+                sonuc["eski_ip"] = eski_ip
+                sonuc["yeni_ip"] = yeni
+                if mac and not mac_normalize(str(sonuc.get("mac_address") or "")):
+                    sonuc["mac_address"] = mac
         self.bitti.emit(sonuc)
 
 
@@ -304,6 +333,7 @@ class MainWindow(QMainWindow):
         self._seg_kayit.failed.connect(lambda m: self.statusBar().showMessage(m, 8000))
         self._gdrive_isci: GDriveSyncThread | None = None
         self._an_isci = None
+        self._an_giren = 0
         self._web_isci: WebServerThread | None = None
         self._web_url = ""
         self._gdrive_imza: tuple | None = None
@@ -529,25 +559,23 @@ class MainWindow(QMainWindow):
         kameralar.addSeparator()
         self._komut(kameralar, "Seçili hücreyi boşalt", "Ctrl+Del", self._hucre_bosalt)
 
-        ayarlar = menü.addMenu("Ayarlar")
-        self._komut(ayarlar, "Tercihler…", "Ctrl+,", self._ayarlari_ac)
+        self._aksiyon_ayarlar = QAction("Ayarlar", self)
+        self._aksiyon_ayarlar.setShortcut(QKeySequence("Ctrl+,"))
+        self._aksiyon_ayarlar.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self._aksiyon_ayarlar.triggered.connect(self._ayarlari_ac)
+        menü.addAction(self._aksiyon_ayarlar)
 
-        self._menu_bulut = menü.addMenu("Bulut")
-        self._komut(self._menu_bulut, "Drive ayarları…", "", self._ayarlari_ac)
-        self._aksiyon_gdrive_durum = self._komut(
-            self._menu_bulut, "Drive durumu", "", self._gdrive_durum
-        )
+        self._aksiyon_analitik = QAction("Analitik", self)
+        self._aksiyon_analitik.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self._aksiyon_analitik.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self._aksiyon_analitik.triggered.connect(self._analitik_ac)
+        menü.addAction(self._aksiyon_analitik)
 
-        self._menu_analitik = menü.addMenu("Analitik")
-        self._aksiyon_analitik = self._komut(
-            self._menu_analitik, "İnsan sayımı…", "Ctrl+Shift+A", self._analitik_ac
-        )
-
-        self._menu_uzak = menü.addMenu("Uzak izleme")
-        self._aksiyon_web = self._komut(
-            self._menu_uzak, "Portal adresini göster", "Ctrl+Shift+W", self._web_adres
-        )
-        self._menu_modulleri_guncelle()
+        self._aksiyon_web = QAction("Uzak izleme", self)
+        self._aksiyon_web.setShortcut(QKeySequence("Ctrl+Shift+W"))
+        self._aksiyon_web.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self._aksiyon_web.triggered.connect(self._web_adres)
+        menü.addAction(self._aksiyon_web)
 
         yardim = menü.addMenu("Yardım")
         self._komut(yardim, "Nasıl çalışır?", "F1", self._yardim_ac)
@@ -780,20 +808,6 @@ class MainWindow(QMainWindow):
         kuyruga_ekle(kamera_id, yol)
         self.statusBar().showMessage(f"Bulut kuyruğu: {yol}", 4000)
 
-    def _gdrive_durum(self) -> None:
-        bagli = token_yolu().is_file()
-        from gdrive_sync import kuyruk_sayisi
-
-        n = kuyruk_sayisi()
-        acik = bool(self._config.get("gdrive_enabled"))
-        QMessageBox.information(
-            self,
-            "Google Drive",
-            f"Modül: {'açık' if acik else 'kapalı'}\n"
-            f"OAuth: {'bağlı' if bagli else 'yok'}\n"
-            f"Kuyruk: {n} dosya",
-        )
-
     def _analitik_ac(self) -> None:
         self._an_imza = None
         self._analitik_durdur()
@@ -802,23 +816,19 @@ class MainWindow(QMainWindow):
         self._menu_modulleri_guncelle()
 
     def _web_adres(self) -> None:
-        if not self._config.get("web_enabled"):
-            QMessageBox.information(self, "Uzak izleme", "Ayarlar’dan web portalını açın.")
-            return
-        url = self._web_url or f"http://127.0.0.1:{int(self._config.get('web_port') or 8765)}"
-        QMessageBox.information(self, "Uzak izleme", f"Tarayıcı adresi:\n{url}")
+        acik = bool(self._config.get("web_enabled"))
+        url = ""
+        if acik:
+            url = self._web_url or f"http://127.0.0.1:{int(self._config.get('web_port') or 8765)}"
+        WebPortalDialog(url, acik, self).exec()
 
     def _menu_modulleri_guncelle(self) -> None:
-        cfg = self._config
-        if hasattr(self, "_menu_bulut"):
-            self._menu_bulut.setEnabled(True)
-            self._aksiyon_gdrive_durum.setEnabled(True)
-        if hasattr(self, "_menu_analitik"):
-            self._menu_analitik.setEnabled(bool(cfg.get("analytics_enabled")))
-            self._aksiyon_analitik.setEnabled(bool(cfg.get("analytics_enabled")))
-        if hasattr(self, "_menu_uzak"):
-            self._menu_uzak.setEnabled(bool(cfg.get("web_enabled")))
-            self._aksiyon_web.setEnabled(bool(cfg.get("web_enabled")))
+        if hasattr(self, "_aksiyon_ayarlar"):
+            self._aksiyon_ayarlar.setEnabled(True)
+        if hasattr(self, "_aksiyon_analitik"):
+            self._aksiyon_analitik.setEnabled(True)
+        if hasattr(self, "_aksiyon_web"):
+            self._aksiyon_web.setEnabled(True)
 
     def _modulleri_uygula(self) -> None:
         self._gdrive_uygula()
@@ -898,7 +908,23 @@ class MainWindow(QMainWindow):
                 kam, [float(x) for x in cizgi], int(cfg.get("analytics_fps") or 5), self
             )
             self._an_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
+            self._an_isci.sayac.connect(self._analitik_sayac)
             self._an_isci.start()
+            self._analitik_hucreleri_guncelle(True, 0)
+        else:
+            self._analitik_hucreleri_guncelle(False, 0)
+
+    def _analitik_sayac(self, giren: int, _cikan: int, _ort: float) -> None:
+        self._an_giren = int(giren)
+        self._analitik_hucreleri_guncelle(True, self._an_giren)
+
+    def _analitik_hucreleri_guncelle(self, aktif: bool, giren: int = 0) -> None:
+        kid = str(self._config.get("analytics_camera_id") or "")
+        calisiyor = bool(aktif and self._an_isci is not None and self._an_isci.isRunning())
+        for hucre in self._izgara.widgets():
+            kam = hucre.camera or {}
+            bu = calisiyor and str(kam.get("id") or "") == kid
+            hucre.set_analiz(bu, giren if bu else 0)
 
     def _web_uygula(self) -> None:
         imza = self._web_imza_al()
@@ -928,11 +954,14 @@ class MainWindow(QMainWindow):
 
     def _analitik_durdur(self) -> None:
         if self._an_isci is None:
+            self._analitik_hucreleri_guncelle(False, 0)
             return
         self._an_isci.request_stop()
         self._an_isci.wait(4000)
         self._an_isci = None
         self._an_imza = None
+        self._an_giren = 0
+        self._analitik_hucreleri_guncelle(False, 0)
 
     def _web_durdur(self) -> None:
         if self._web_isci is None:
@@ -1105,6 +1134,7 @@ class MainWindow(QMainWindow):
             "source": kaynak,
             "xaddrs": (bilgi or {}).get("xaddrs") or "",
             "vendor": uretici,
+            "mac_address": mac_normalize(str((bilgi or {}).get("mac_address") or "")),
         }
         self._config.upsert_device(kayit, from_scan=True)
         self._cihaz_listesini_yenile()
@@ -1353,11 +1383,27 @@ class MainWindow(QMainWindow):
         taban = self._kanal_taban or {}
         cihaz_id = str(sonuc.get("device_id") or taban.get("id") or "")
         kanallar = sonuc.get("kanallar") or []
-        if sonuc.get("xaddrs"):
+        mac = mac_normalize(str(sonuc.get("mac_address") or taban.get("mac_address") or ""))
+        if mac:
+            taban["mac_address"] = mac
+        yeni_ip = str(sonuc.get("yeni_ip") or "").strip()
+        if yeni_ip and cihaz_id:
+            guncel = self._config.guncelle_cihaz_ip(cihaz_id, yeni_ip)
+            _log.info("DVR IP adresi %s olarak güncellendi", yeni_ip)
+            taban["ip"] = yeni_ip
+            if guncel and guncel.get("xaddrs"):
+                taban["xaddrs"] = guncel.get("xaddrs")
+            for kamera in self._config.cameras_of_device(cihaz_id):
+                self._bagli_hucreleri_guncelle(kamera)
+            self.statusBar().showMessage(f"DVR IP adresi {yeni_ip} olarak güncellendi")
+        if sonuc.get("xaddrs") or mac:
             guncel = dict(taban)
-            guncel["xaddrs"] = sonuc.get("xaddrs")
+            if sonuc.get("xaddrs"):
+                guncel["xaddrs"] = sonuc.get("xaddrs")
             if cihaz_id:
                 guncel["id"] = cihaz_id
+            if mac:
+                guncel["mac_address"] = mac
             self._config.upsert_device(guncel, from_scan=False)
         if not sonuc.get("ok") or not kanallar:
             self._cihaz_listesini_yenile()
@@ -1373,6 +1419,9 @@ class MainWindow(QMainWindow):
         bulunan_uretici = str(sonuc.get("vendor") or "")
         if bulunan_uretici and bulunan_uretici != "auto" and taban.get("vendor") in ("", None, "auto"):
             taban["vendor"] = bulunan_uretici
+            degisti = True
+        if mac and taban.get("mac_address") != mac:
+            taban["mac_address"] = mac
             degisti = True
         if degisti:
             self._config.upsert_device(taban, from_scan=False)
@@ -1501,6 +1550,8 @@ class MainWindow(QMainWindow):
             mevcut = hucre.camera
             if mevcut and mevcut.get("id") == kid:
                 self._izgara.assign_camera(i, kamera)
+        aktif = self._an_isci is not None and self._an_isci.isRunning()
+        self._analitik_hucreleri_guncelle(aktif, getattr(self, "_an_giren", 0))
 
     def _liste_menu(self, pos) -> None:
         oge = self._liste.itemAt(pos)

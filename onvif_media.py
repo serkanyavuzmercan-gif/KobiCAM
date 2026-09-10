@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, urlparse, urlunparse
 
-from network_scanner import yerel_ipv4_adresleri
+from network_scanner import mac_coz_ip, mac_normalize, yerel_ipv4_adresleri
 from ptz_controller import _cihaz_url, _media_url_sec, _posta, _posta_ex, _xaddrs
 from rtsp_probe import (
     URETICI_ONVIF_PORTLARI,
@@ -90,6 +90,36 @@ def _xml_kok(xml: str) -> ET.Element | None:
         return ET.fromstring(xml)
     except ET.ParseError:
         return None
+
+
+def onvif_mac_al(device_url: str, kullanici: str, sifre: str) -> str:
+    """GetNetworkInterfaces SOAP yanıtından donanım MAC'ini okur."""
+    url = (device_url or "").strip()
+    if not url:
+        return ""
+    xml, _hata = _posta_ex(
+        url,
+        f'<tds:GetNetworkInterfaces xmlns:tds="{_NS_TDS}"/>',
+        kullanici,
+        sifre,
+        soap_action=f"{_NS_TDS}/GetNetworkInterfaces",
+        zaman_asimi=4,
+    )
+    kok = _xml_kok(xml)
+    if kok is None:
+        return ""
+    for el in kok.iter():
+        ad = _yerel(el.tag).lower()
+        if ad in ("hwaddress", "mac", "physaddress") and (el.text or "").strip():
+            mac = mac_normalize(el.text.strip())
+            if mac:
+                return mac
+    return ""
+
+
+def _mac_topla(ip: str, cihaz_url: str, kullanici: str, sifre: str) -> str:
+    mac = onvif_mac_al(cihaz_url, kullanici, sifre) if cihaz_url else ""
+    return mac or mac_coz_ip(ip)
 
 
 def _profilleri_ayikla(xml: str) -> list[dict]:
@@ -457,24 +487,27 @@ def cihaz_baglan(
     tahmin edilir.
 
     Returns:
-        {ok, hata, kanallar, xaddrs, cihaz_adi, rtsp_port, vendor, gunluk}
+        {ok, hata, hata_kod, kanallar, xaddrs, cihaz_adi, rtsp_port, vendor, gunluk, mac_address}
     """
     ip = (ip or "").strip()
     gunluk: list[str] = []
     bos = {
         "ok": False,
         "hata": "IP adresi gerekli.",
+        "hata_kod": "ip",
         "kanallar": [],
         "xaddrs": xaddrs,
         "cihaz_adi": cihaz_adi,
         "rtsp_port": int(rtsp_port or 554),
         "vendor": vendor,
         "gunluk": gunluk,
+        "mac_address": "",
     }
     if not ip:
         return bos
     if not (kullanici or "").strip():
         bos["hata"] = "Cihaz kullanıcı adı gerekli."
+        bos["hata_kod"] = "auth"
         return bos
 
     vendor = (vendor or "auto").lower()
@@ -585,26 +618,41 @@ def cihaz_baglan(
                 "Cihaza ulaşıldı ama kamera listesi alınamadı. "
                 "ONVIF'i cihaz menüsünden açın veya kanalları elle oluşturun."
             )
+        if onvif_auth or rtsp_durum == "auth":
+            kod = "auth"
+        elif rtsp_durum == "kapali":
+            kod = hata if hata in ("timeout", "refused", "baglanti") else "kapali"
+        elif rtsp_durum == "yol_yok":
+            kod = "yol_yok"
+        else:
+            kod = hata or "yanit_yok"
         return {
             "ok": False,
             "hata": mesaj,
+            "hata_kod": kod,
             "kanallar": [],
             "xaddrs": cihaz or xaddrs,
             "cihaz_adi": cihaz_adi,
             "rtsp_port": kullanilan_port,
             "vendor": vendor,
             "gunluk": gunluk,
+            "mac_address": mac_coz_ip(ip),
         }
 
+    mac = _mac_topla(ip, cihaz, kullanici, sifre)
+    if mac:
+        gunluk.append(f"MAC: {mac}")
     return {
         "ok": True,
         "hata": "",
+        "hata_kod": "",
         "kanallar": kanallar,
         "xaddrs": cihaz or xaddrs,
         "cihaz_adi": cihaz_adi or ip,
         "rtsp_port": kullanilan_port,
         "vendor": vendor,
         "gunluk": gunluk,
+        "mac_address": mac,
     }
 
 

@@ -7,8 +7,13 @@ Yalnızca yerel arayüzlerin /24 ağları taranır (ör. 10.0.0.0/8'in tamamı d
 
 from __future__ import annotations
 
+import ctypes
+import os
 import re
 import socket
+import struct
+import subprocess
+import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -147,6 +152,105 @@ def _tcp_port_acik(ip: str, port: int, timeout: float) -> bool:
         soket.close()
 
 
+def tcp_port_acik(ip: str, port: int, timeout: float = 0.25) -> bool:
+    """Harici çağrılar için TCP yoklama."""
+    return _tcp_port_acik(ip, port, timeout)
+
+
+_MAC_RE = re.compile(r"^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$")
+_ARP_SATIR = re.compile(
+    r"(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}(?:[-:][0-9a-fA-F]{2}){5})",
+    re.IGNORECASE,
+)
+
+
+def mac_normalize(deger: str | None) -> str:
+    """MAC'i AA:BB:CC:DD:EE:FF yapar; geçersizse boş dize."""
+    ham = re.sub(r"[^0-9A-Fa-f]", "", deger or "")
+    if len(ham) != 12:
+        return ""
+    mac = ":".join(ham[i : i + 2] for i in range(0, 12, 2)).upper()
+    return mac if _MAC_RE.match(mac) else ""
+
+
+def arp_ciktisindan_mac(metin: str, ip: str) -> str:
+    """`arp -a` çıktısından verilen IPv4 için MAC okur."""
+    ip = (ip or "").strip()
+    if not ip:
+        return ""
+    for satir in (metin or "").splitlines():
+        es = _ARP_SATIR.search(satir)
+        if not es:
+            continue
+        if es.group(1) == ip:
+            return mac_normalize(es.group(2))
+    return ""
+
+
+def _sendarp_mac(ip: str) -> str:
+    if sys.platform != "win32":
+        return ""
+    try:
+        iphlpapi = ctypes.windll.Iphlpapi
+        dest = struct.unpack("I", socket.inet_aton(ip))[0]
+        buf = ctypes.create_string_buffer(8)
+        uzunluk = ctypes.c_ulong(6)
+        kod = iphlpapi.SendARP(dest, 0, buf, ctypes.byref(uzunluk))
+        if kod != 0 or uzunluk.value < 6:
+            return ""
+        return mac_normalize(":".join(f"{b:02X}" for b in buf.raw[:6]))
+    except Exception:
+        return ""
+
+
+def _arp_komut_mac(ip: str) -> str:
+    bayrak = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    try:
+        komut = ["arp", "-a", ip] if os.name == "nt" else ["arp", "-n", ip]
+        tamam = subprocess.run(
+            komut,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+            creationflags=bayrak,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return arp_ciktisindan_mac((tamam.stdout or "") + (tamam.stderr or ""), ip)
+
+
+def mac_coz_ip(ip: str) -> str:
+    """IPv4 için yerel ARP tablosundan MAC döndürür."""
+    ip = (ip or "").strip()
+    if not ip:
+        return ""
+    mac = _sendarp_mac(ip)
+    if mac:
+        return mac
+    return _arp_komut_mac(ip)
+
+
+def yerel_ag_hedefleri() -> list[str]:
+    """Yerel RFC1918 /24 ağlarındaki taranacak IPv4 listesi."""
+    hedefler: list[str] = []
+    kendi = set(yerel_ipv4_adresleri())
+    gorulen_ag: set[str] = set()
+    for ip in sorted(kendi):
+        if not _ozel_ag_mi(ip):
+            continue
+        parca = ip.split(".")
+        ag_anahtari = ".".join(parca[:3])
+        if ag_anahtari in gorulen_ag:
+            continue
+        gorulen_ag.add(ag_anahtari)
+        for son in range(1, 255):
+            aday = f"{ag_anahtari}.{son}"
+            if aday not in kendi:
+                hedefler.append(aday)
+    return hedefler
+
+
 class NetworkScanner(QObject):
     """Lokal ağdaki ONVIF / RTSP cihazlarını tarar."""
 
@@ -188,7 +292,10 @@ class NetworkScanner(QObject):
         if ip in self._bulunan:
             return
         self._bulunan.add(ip)
-        self.camera_found.emit(ip, port, kaynak, bilgi)
+        paket = dict(bilgi or {})
+        if not mac_normalize(str(paket.get("mac_address") or "")):
+            paket["mac_address"] = mac_coz_ip(ip)
+        self.camera_found.emit(ip, port, kaynak, paket)
 
     def _onvif_tara(self) -> None:
         """UDP 3702 WS-Discovery Probe gönderir ve yanıtları dinler."""
@@ -251,23 +358,7 @@ class NetworkScanner(QObject):
 
     def _rtsp_hedefler(self) -> list[str]:
         """Yerel /24 ağlardaki taranacak IPv4 listesini üretir."""
-        hedefler: list[str] = []
-        kendi = set(yerel_ipv4_adresleri())
-        gorulen_ag: set[str] = set()
-
-        for ip in sorted(kendi):
-            if not _ozel_ag_mi(ip):
-                continue
-            parca = ip.split(".")
-            ag_anahtari = ".".join(parca[:3])
-            if ag_anahtari in gorulen_ag:
-                continue
-            gorulen_ag.add(ag_anahtari)
-            for son in range(1, 255):
-                aday = f"{ag_anahtari}.{son}"
-                if aday not in kendi:
-                    hedefler.append(aday)
-        return hedefler
+        return yerel_ag_hedefleri()
 
     def _rtsp_tara(self) -> None:
         """Kamera / DVR portlarını sınırlı eşzamanlılıkla tarar."""

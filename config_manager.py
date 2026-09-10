@@ -12,9 +12,40 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlparse, urlunparse
 
 from auth_manager import get_app_data_dir
 from security.crypto_manager import bellege_coz, disk_icin_sifrele, gocet_duz_metin
+
+
+def url_host_degistir(url: str, eski_ip: str, yeni_ip: str) -> str:
+    """RTSP/HTTP URL veya XAddrs metninde host IPv4'ü değiştirir."""
+    metin = url or ""
+    eski = (eski_ip or "").strip()
+    yeni = (yeni_ip or "").strip()
+    if not metin or not eski or not yeni or eski == yeni:
+        return metin
+    if " " in metin or (metin.count("http") > 1):
+        return " ".join(url_host_degistir(parca, eski, yeni) for parca in metin.split())
+    try:
+        ayr = urlparse(metin)
+    except ValueError:
+        return metin.replace(eski, yeni)
+    host = ayr.hostname or ""
+    if host != eski:
+        return metin.replace(eski, yeni) if eski in metin else metin
+    kullanici, parola = ayr.username, ayr.password
+    netloc = yeni
+    if kullanici is not None:
+        kimlik = quote(kullanici, safe="")
+        if parola is not None:
+            kimlik += ":" + quote(parola, safe="")
+        netloc = f"{kimlik}@{yeni}"
+    if ayr.port:
+        netloc += f":{ayr.port}"
+    return urlunparse(
+        (ayr.scheme, netloc, ayr.path, ayr.params, ayr.query, ayr.fragment)
+    )
 
 
 # Uygulama varsayılanları — ilk açılışta bu şema yazılır
@@ -77,6 +108,7 @@ class ConfigManager:
             duz = gocet_duz_metin(deepcopy(self._veri))
             bellege_coz(self._veri)
             self._cihazlari_gocet()
+            self._mac_alanini_doldur()
             if duz:
                 self.save()
         except (OSError, json.JSONDecodeError):
@@ -165,6 +197,7 @@ class ConfigManager:
                         "xaddrs": k.get("xaddrs") or "",
                         "source": k.get("source") or "manual",
                         "vendor": "auto",
+                        "mac_address": "",
                     }
                 )
                 degisti = True
@@ -180,6 +213,16 @@ class ConfigManager:
         self._veri["devices"] = yeni_cihazlar or cihazlar
         self._veri["cameras"] = yeni_kameralar
         self.save()
+
+    def _mac_alanini_doldur(self) -> None:
+        liste = self.devices()
+        degisti = False
+        for cihaz in liste:
+            if "mac_address" not in cihaz:
+                cihaz["mac_address"] = ""
+                degisti = True
+        if degisti:
+            self._veri["devices"] = liste
 
     def upsert_device(self, cihaz: dict[str, Any], from_scan: bool = False) -> dict[str, Any]:
         liste = self.devices()
@@ -203,6 +246,8 @@ class ConfigManager:
                 birlesik["name"] = cihaz.get("name")
             if cihaz.get("source"):
                 birlesik["source"] = cihaz.get("source")
+            if cihaz.get("mac_address") and not (mevcut.get("mac_address") or "").strip():
+                birlesik["mac_address"] = cihaz.get("mac_address")
             liste[indeks] = birlesik
             self.set("devices", liste)
             return deepcopy(birlesik)
@@ -212,6 +257,7 @@ class ConfigManager:
             yeni.setdefault("onvif_port", 80)
             yeni.setdefault("media_port", 34567)
             yeni.setdefault("vendor", "auto")
+            yeni.setdefault("mac_address", "")
             liste.append(yeni)
             self.set("devices", liste)
             return deepcopy(yeni)
@@ -219,6 +265,43 @@ class ConfigManager:
         liste[indeks] = {**mevcut, **cihaz, "id": mevcut.get("id")}
         self.set("devices", liste)
         return deepcopy(liste[indeks])
+
+    def guncelle_cihaz_ip(self, cihaz_id: str, yeni_ip: str) -> dict[str, Any] | None:
+        """Cihaz ve bağlı kameraların IP / RTSP host alanlarını günceller."""
+        cihaz_id = str(cihaz_id or "")
+        yeni_ip = (yeni_ip or "").strip()
+        if not cihaz_id or not yeni_ip:
+            return None
+        liste = self.devices()
+        indeks = None
+        for i, mevcut in enumerate(liste):
+            if str(mevcut.get("id") or "") == cihaz_id:
+                indeks = i
+                break
+        if indeks is None:
+            return None
+        eski_ip = str(liste[indeks].get("ip") or "").strip()
+        if eski_ip == yeni_ip:
+            return deepcopy(liste[indeks])
+        cihaz = dict(liste[indeks])
+        cihaz["ip"] = yeni_ip
+        if cihaz.get("xaddrs"):
+            cihaz["xaddrs"] = url_host_degistir(str(cihaz.get("xaddrs") or ""), eski_ip, yeni_ip)
+        liste[indeks] = cihaz
+        kameralar = self.cameras()
+        for i, kamera in enumerate(kameralar):
+            if str(kamera.get("device_id") or "") != cihaz_id:
+                continue
+            k = dict(kamera)
+            k["ip"] = yeni_ip
+            for alan in ("main_url", "sub_url", "xaddrs"):
+                if k.get(alan):
+                    k[alan] = url_host_degistir(str(k.get(alan) or ""), eski_ip, yeni_ip)
+            kameralar[i] = k
+        self._veri["devices"] = liste
+        self._veri["cameras"] = kameralar
+        self.save()
+        return deepcopy(cihaz)
 
     def remove_device(self, cihaz_id: str) -> list[str]:
         """Cihazı ve ona bağlı kameraları siler. Silinen kamera id'lerini döner."""

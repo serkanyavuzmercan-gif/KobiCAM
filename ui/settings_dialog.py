@@ -1,14 +1,14 @@
 """
 Kalıcı ayarlar penceresi.
 
-Genel, Google Drive, analitik ve web portal sekmeleri.
+Genel, Bulut, analitik ve web portal sekmeleri.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -89,6 +90,15 @@ QTabBar::tab {
     border: 1px solid #2e3440;
 }
 QTabBar::tab:selected { background: #2b7fc4; color: #ffffff; }
+QGroupBox {
+    color: #e8edf5;
+    border: 1px solid #2e3440;
+    border-radius: 4px;
+    margin-top: 10px;
+    padding: 10px 8px 8px 8px;
+    font-weight: 600;
+}
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
 """
 
 
@@ -112,7 +122,7 @@ class SettingsDialog(QDialog):
         kok.setContentsMargins(16, 16, 16, 12)
         sekmeler = QTabWidget()
         sekmeler.addTab(self._sekme_genel(), "Genel")
-        sekmeler.addTab(self._sekme_drive(), "Google Drive")
+        sekmeler.addTab(self._sekme_drive(), "Bulut")
         sekmeler.addTab(self._sekme_analitik(), "Analitik")
         sekmeler.addTab(self._sekme_web(), "Web / mobil")
         kok.addWidget(sekmeler, 1)
@@ -120,9 +130,15 @@ class SettingsDialog(QDialog):
         dugmeler = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        dugmeler.button(QDialogButtonBox.StandardButton.Ok).setText("Kaydet")
+        dugmeler.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
         dugmeler.accepted.connect(self._kaydet)
         dugmeler.rejected.connect(self.reject)
         kok.addWidget(dugmeler)
+        self._an_timer = QTimer(self)
+        self._an_timer.timeout.connect(self._canli_analitik_yenile)
+        self._an_timer.start(2000)
+        self._canli_analitik_yenile()
 
     def _sekme_genel(self) -> QWidget:
         kutu = QWidget()
@@ -226,8 +242,9 @@ class SettingsDialog(QDialog):
         form.addRow("Senkron kameralar", self._gdrive_kameralar)
         form.addRow(self._gdrive_baglan)
         ipucu = QLabel(
-            "Google Cloud Console’da Desktop OAuth istemcisi oluşturun "
-            "(drive.file kapsamı). Token %APPDATA%\\KobiCAM\\gdrive_token.json dosyasına yazılır."
+            "1. Google Drive hesabınızı bağlayın.\n"
+            "2. Otomatik senkronizasyonu açın.\n"
+            "3. Sistem 5 günden eski videoları otomatik siler, harddiskiniz dolmaz."
         )
         ipucu.setWordWrap(True)
         form.addRow(ipucu)
@@ -254,19 +271,65 @@ class SettingsDialog(QDialog):
         form.addRow(self._an_acik)
         form.addRow("Analiz kamerası", self._an_kamera)
         form.addRow("İşleme FPS", self._an_fps)
+        panel = QGroupBox("Canlı durum")
+        panel_y = QVBoxLayout(panel)
+        self._an_durum = QLabel("Durduruldu")
+        self._an_ozet = QLabel("Giren insan: 0 | Çıkan insan: 0 | Ort. kalma süresi: 0 dk")
+        self._an_yuk = QLabel("YOLOv8n (CPU) — %0 kare işleniyor")
+        for et in (self._an_durum, self._an_ozet, self._an_yuk):
+            et.setWordWrap(True)
+            panel_y.addWidget(et)
+        form.addRow(panel)
         ipucu = QLabel(
-            "Sayım çizgisini Analitik penceresinde (menü) son karenin üzerine çizin. "
-            "YOLOv8n CPU’da tek kamerada çalışır."
+            "Sayım çizgisini Analitik menüsünden açılan pencerede kare üzerine iki tıklayarak çizin."
         )
         ipucu.setWordWrap(True)
         form.addRow(ipucu)
         return kutu
 
+    def _canli_analitik_yenile(self) -> None:
+        if not hasattr(self, "_an_durum"):
+            return
+        parent = self.parent()
+        isci = getattr(parent, "_an_isci", None)
+        calisiyor = isci is not None and isci.isRunning()
+        if calisiyor:
+            self._an_durum.setText("Çalışıyor")
+            self._an_durum.setStyleSheet("color: #5dca7a; font-weight: 700;")
+        else:
+            self._an_durum.setText("Durduruldu")
+            self._an_durum.setStyleSheet("color: #e07070; font-weight: 700;")
+        kid = str(self._an_kamera.currentData() or self._config.get("analytics_camera_id") or "")
+        giren = cikan = 0
+        ort_sn = 0.0
+        if kid:
+            try:
+                from analytics_worker import saatlik_son_24saat
+
+                giren, cikan, ort_sn = saatlik_son_24saat(kid)
+            except Exception:
+                pass
+        ort_dk = ort_sn / 60.0
+        self._an_ozet.setText(
+            f"Giren insan: {giren} | Çıkan insan: {cikan} | Ort. kalma süresi: {ort_dk:.1f} dk"
+        )
+        cihaz = "CPU"
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                cihaz = "GPU"
+        except Exception:
+            pass
+        fps = int(self._an_fps.value() or 5) if calisiyor else 0
+        yuk = max(0, min(100, int(round((fps / 15.0) * 100)))) if calisiyor else 0
+        self._an_yuk.setText(f"YOLOv8n ({cihaz}) — %{yuk} kare işleniyor")
+
     def _sekme_web(self) -> QWidget:
         kutu = QWidget()
         form = QFormLayout(kutu)
         cfg = self._config
-        self._web_acik = QCheckBox("Yerel web / mobil portalı aç")
+        self._web_acik = QCheckBox("Yayını başlat")
         self._web_acik.setChecked(bool(cfg.get("web_enabled")))
         self._web_bind = QLineEdit(str(cfg.get("web_bind") or "0.0.0.0"))
         self._web_port = QSpinBox()
@@ -275,7 +338,7 @@ class SettingsDialog(QDialog):
         self._web_max = QSpinBox()
         self._web_max.setRange(1, 4)
         self._web_max.setValue(int(cfg.get("web_max_streams") or 4))
-        self._ngrok_acik = QCheckBox("Ngrok tüneli (WAN, port yönlendirme yok)")
+        self._ngrok_acik = QCheckBox("Uzaktan / farklı Wi-Fi’dan izle (Ngrok)")
         self._ngrok_acik.setChecked(bool(cfg.get("ngrok_enabled")))
         self._ngrok_token = QLineEdit(str(cfg.get("ngrok_authtoken") or ""))
         self._ngrok_token.setEchoMode(QLineEdit.EchoMode.Password)
@@ -293,11 +356,18 @@ class SettingsDialog(QDialog):
         form.addRow("Port", self._web_port)
         form.addRow("En fazla HLS yayın", self._web_max)
         form.addRow(self._ngrok_acik)
-        form.addRow("Ngrok authtoken", self._ngrok_token)
+        form.addRow("Ngrok anahtarı", self._ngrok_token)
         form.addRow("Portal adresi", url_satir)
+        from network_scanner import yerel_ipv4_adresleri
+
+        ornek_ip = (yerel_ipv4_adresleri() or ["192.168.1.50"])[0]
+        port = int(cfg.get("web_port") or 8765)
         ipucu = QLabel(
-            "Tarayıcıdan http://bu-pc:port adresiyle giriş (KobiCAM kullanıcı/şifre). "
-            "DVR portları internete açılmaz."
+            "1. «Yayını başlat» kutusunu işaretleyip Kaydet’e basın.\n"
+            f"2. Aynı Wi-Fi’daysanız telefon tarayıcısına şunu yazın: http://{ornek_ip}:{port}\n"
+            "3. Farklı Wi-Fi veya dışarıdan: «Uzaktan / farklı Wi-Fi’dan izle» kutusunu "
+            "işaretleyin, Ngrok anahtarını girin, Kaydet’e basın. Portal adresindeki "
+            "bağlantıyı telefona yazın (ücretsiz anahtar: ngrok.com)."
         )
         ipucu.setWordWrap(True)
         form.addRow(ipucu)
@@ -334,7 +404,7 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "Google Drive",
-                "Önce OAuth Client ID ve secret girin, Tamam deyip tekrar bağlanın.",
+                "Önce Client ID ve secret girin, Kaydet deyip tekrar bağlanın.",
             )
             return
         self._config.set("gdrive_oauth_client_id", cid, kaydet=False)

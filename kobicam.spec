@@ -41,6 +41,8 @@ hiddenimports = [
     "process_util",
     "db_util",
     "app_log",
+    "device_reconnector",
+    "ui.web_portal_dialog",
     "cryptography",
     "keyring",
     "win32cred",

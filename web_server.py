@@ -289,7 +289,10 @@ class WebServerThread(QThread):
         web_ortam_ayarla(self._config, AuthManager(), jwt_gizli(self._config))
         bind = str(self._config.get("web_bind") or "0.0.0.0")
         port = int(self._config.get("web_port") or 8765)
-        public = f"http://127.0.0.1:{port}"
+        from network_scanner import yerel_ipv4_adresleri
+
+        lan = (yerel_ipv4_adresleri() or ["127.0.0.1"])[0]
+        public = f"http://{lan}:{port}"
         if self._config.get("ngrok_enabled") and str(self._config.get("ngrok_authtoken") or "").strip():
             try:
                 from pyngrok import ngrok
