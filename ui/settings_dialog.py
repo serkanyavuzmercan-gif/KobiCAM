@@ -81,6 +81,7 @@ QPushButton {
     padding: 6px 12px;
 }
 QPushButton:hover { border-color: #3d9cf0; color: #e8edf5; }
+QPushButton:disabled { color: #5a6270; border-color: #2e3440; }
 QDialogButtonBox QPushButton { min-width: 72px; }
 QTabWidget::pane { border: 1px solid #2e3440; }
 QTabBar::tab {
@@ -137,8 +138,10 @@ class SettingsDialog(QDialog):
         kok.addWidget(dugmeler)
         self._an_timer = QTimer(self)
         self._an_timer.timeout.connect(self._canli_analitik_yenile)
+        self._an_timer.timeout.connect(self._tailscale_yenile)
         self._an_timer.start(2000)
         self._canli_analitik_yenile()
+        self._tailscale_yenile()
 
     def _sekme_genel(self) -> QWidget:
         kutu = QWidget()
@@ -338,40 +341,68 @@ class SettingsDialog(QDialog):
         self._web_max = QSpinBox()
         self._web_max.setRange(1, 4)
         self._web_max.setValue(int(cfg.get("web_max_streams") or 4))
-        self._ngrok_acik = QCheckBox("Uzaktan / farklı Wi-Fi’dan izle (Ngrok)")
-        self._ngrok_acik.setChecked(bool(cfg.get("ngrok_enabled")))
-        self._ngrok_token = QLineEdit(str(cfg.get("ngrok_authtoken") or ""))
-        self._ngrok_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self._web_url = QLineEdit(str(cfg.get("web_last_url") or ""))
+        self._web_port.valueChanged.connect(self._tailscale_yenile)
+        ts_kutu = QGroupBox("Tailscale ile Güvenli Uzak Erişim")
+        ts_y = QVBoxLayout(ts_kutu)
+        self._ts_durum = QLabel("🔴 Tailscale Çalışmıyor")
+        self._ts_durum.setWordWrap(True)
+        ts_y.addWidget(self._ts_durum)
+        self._web_url = QLineEdit()
         self._web_url.setReadOnly(True)
+        self._web_url.setPlaceholderText("Tailscale bağlıysa otomatik dolar")
         kopya = QPushButton("Kopyala")
         kopya.clicked.connect(self._web_url_kopyala)
+        self._web_qr = QPushButton("QR kod")
+        self._web_qr.setEnabled(False)
+        self._web_qr.clicked.connect(self._web_qr_goster)
         url_satir = QWidget()
         url_y = QHBoxLayout(url_satir)
         url_y.setContentsMargins(0, 0, 0, 0)
         url_y.addWidget(self._web_url, 1)
         url_y.addWidget(kopya)
+        url_y.addWidget(self._web_qr)
         form.addRow(self._web_acik)
         form.addRow("Dinleme adresi", self._web_bind)
         form.addRow("Port", self._web_port)
         form.addRow("En fazla HLS yayın", self._web_max)
-        form.addRow(self._ngrok_acik)
-        form.addRow("Ngrok anahtarı", self._ngrok_token)
+        form.addRow(ts_kutu)
         form.addRow("Portal adresi", url_satir)
-        from network_scanner import yerel_ipv4_adresleri
-
-        ornek_ip = (yerel_ipv4_adresleri() or ["192.168.1.50"])[0]
-        port = int(cfg.get("web_port") or 8765)
         ipucu = QLabel(
             "1. «Yayını başlat» kutusunu işaretleyip Kaydet’e basın.\n"
-            f"2. Aynı Wi-Fi’daysanız telefon tarayıcısına şunu yazın: http://{ornek_ip}:{port}\n"
-            "3. Farklı Wi-Fi veya dışarıdan: «Uzaktan / farklı Wi-Fi’dan izle» kutusunu "
-            "işaretleyin, Ngrok anahtarını girin, Kaydet’e basın. Portal adresindeki "
-            "bağlantıyı telefona yazın (ücretsiz anahtar: ngrok.com)."
+            "2. PC ve telefonunuza Tailscale yükleyip aynı hesapla giriş yapın.\n"
+            "3. Farklı Wi-Fi veya hücresel verideyken Portal Adresini "
+            "(http://100.x.y.z:8765) telefon tarayıcısına yazın."
         )
         ipucu.setWordWrap(True)
         form.addRow(ipucu)
         return kutu
+
+    def _tailscale_yenile(self) -> None:
+        if not hasattr(self, "_ts_durum"):
+            return
+        from utils.network_helper import get_tailscale_ip, portal_url
+
+        ip = get_tailscale_ip()
+        port = int(self._web_port.value() if hasattr(self, "_web_port") else 8765)
+        if ip:
+            self._ts_durum.setText(f"🟢 Tailscale Bağlı: {ip}")
+            self._ts_durum.setStyleSheet("color: #5dca7a; font-weight: 700;")
+            adres = portal_url(port)
+            self._web_url.setText(adres)
+            self._web_qr.setEnabled(bool(adres))
+        else:
+            self._ts_durum.setText("🔴 Tailscale Çalışmıyor")
+            self._ts_durum.setStyleSheet("color: #e07070; font-weight: 700;")
+            self._web_url.clear()
+            self._web_qr.setEnabled(False)
+
+    def _web_qr_goster(self) -> None:
+        url = self._web_url.text().strip()
+        if not url:
+            return
+        from ui.web_portal_dialog import WebPortalDialog
+
+        WebPortalDialog(url, True, self).exec()
 
     def _klasor_satiri(self, alan: QLineEdit, baslik: str) -> QWidget:
         satir = QWidget()
@@ -455,15 +486,20 @@ class SettingsDialog(QDialog):
         self._config.set("web_bind", self._web_bind.text().strip() or "0.0.0.0", kaydet=False)
         self._config.set("web_port", int(self._web_port.value()), kaydet=False)
         self._config.set("web_max_streams", int(self._web_max.value()), kaydet=False)
-        self._config.set("ngrok_enabled", self._ngrok_acik.isChecked(), kaydet=False)
-        self._config.set("ngrok_authtoken", self._ngrok_token.text().strip(), kaydet=False)
+        adres = self._web_url.text().strip()
+        if adres:
+            self._config.set("web_last_url", adres, kaydet=False)
         self._config.save()
         self.accept()
 
     def _web_url_kopyala(self) -> None:
         metin = self._web_url.text().strip()
         if not metin:
-            QMessageBox.information(self, "Uzak izleme", "Portal henüz ayağa kalkmadı.")
+            QMessageBox.information(
+                self,
+                "Uzak izleme",
+                "Tailscale bağlı değil. PC’de Tailscale’i açıp aynı hesapla giriş yapın.",
+            )
             return
         QApplication.clipboard().setText(metin)
         QMessageBox.information(self, "Uzak izleme", "Adres panoya kopyalandı.")

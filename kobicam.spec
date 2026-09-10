@@ -37,7 +37,7 @@ hiddenimports = [
     "torchvision",
     "scipy",
     "matplotlib",
-    "pyngrok",
+    "psutil",
     "process_util",
     "db_util",
     "app_log",
@@ -50,6 +50,7 @@ hiddenimports = [
     "security.crypto_manager",
     "utils",
     "utils.path_helper",
+    "utils.network_helper",
 ]
 
 for paket in (

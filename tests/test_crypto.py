@@ -34,7 +34,6 @@ def test_sifrele_url_userinfo() -> None:
 def test_gocet_duz_metin() -> None:
     veri = {
         "gdrive_oauth_client_secret": "sekret",
-        "ngrok_authtoken": "",
         "devices": [{"password": "dvrpass"}],
         "cameras": [
             {

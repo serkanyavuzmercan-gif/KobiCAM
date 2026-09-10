@@ -819,7 +819,10 @@ class MainWindow(QMainWindow):
         acik = bool(self._config.get("web_enabled"))
         url = ""
         if acik:
-            url = self._web_url or f"http://127.0.0.1:{int(self._config.get('web_port') or 8765)}"
+            from utils.network_helper import portal_url
+
+            port = int(self._config.get("web_port") or 8765)
+            url = portal_url(port) or self._web_url or f"http://127.0.0.1:{port}"
         WebPortalDialog(url, acik, self).exec()
 
     def _menu_modulleri_guncelle(self) -> None:
@@ -866,8 +869,6 @@ class MainWindow(QMainWindow):
             str(cfg.get("web_bind") or "0.0.0.0"),
             int(cfg.get("web_port") or 8765),
             int(cfg.get("web_max_streams") or 4),
-            bool(cfg.get("ngrok_enabled")),
-            str(cfg.get("ngrok_authtoken") or "").strip(),
         )
 
     def _gdrive_uygula(self) -> None:

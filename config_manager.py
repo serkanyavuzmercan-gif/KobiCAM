@@ -80,8 +80,6 @@ _VARSAYILANLAR: dict[str, Any] = {
     "web_port": 8765,
     "web_jwt_secret": "",
     "web_max_streams": 4,
-    "ngrok_enabled": False,
-    "ngrok_authtoken": "",
     "web_last_url": "",
 }
 

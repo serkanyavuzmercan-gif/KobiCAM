@@ -101,8 +101,8 @@ class WebPortalDialog(QDialog):
         if not acik or not (url or "").strip():
             notu = QLabel(
                 "Yayın kapalı. Ayarlar → Web / mobil’de «Yayını başlat» kutusunu "
-                "işaretleyip Kaydet’e basın. Farklı ağdan izlemek için aynı sekmede "
-                "uzaktan izlemeyi de açın."
+                "işaretleyip Kaydet’e basın. Uzaktan izlemek için PC ve telefonda "
+                "Tailscale açık ve aynı hesapta olmalıdır."
             )
             notu.setObjectName("not")
             notu.setWordWrap(True)
@@ -115,17 +115,20 @@ class WebPortalDialog(QDialog):
             etiket.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             etiket.setWordWrap(True)
             kok.addWidget(etiket)
-            uzak = adres.lower().startswith("https://") or "ngrok" in adres.lower()
+            from utils.network_helper import tailscale_adresi_mi
+
+            uzak = tailscale_adresi_mi(adres)
             if uzak:
                 aciklama_metin = (
-                    "Bu adres farklı Wi-Fi ve dışarıdan da çalışır. "
-                    "Telefon tarayıcısına yazın; giriş KobiCAM kullanıcı adı ve şifrenizledir."
+                    "Bu adres Tailscale ağı üzerindedir; farklı Wi-Fi ve hücresel veride "
+                    "de çalışır. Telefonunuzda Tailscale açık olsun. Giriş, KobiCAM "
+                    "kullanıcı adı ve şifrenizledir."
                 )
             else:
                 aciklama_metin = (
-                    "Bu adres aynı Wi-Fi’daki telefonlar içindir. "
-                    "Farklı ağdan izlemek için Ayarlar → Web / mobil’de "
-                    "«Uzaktan / farklı Wi-Fi’dan izle» kutusunu açın."
+                    "Bu adres aynı Wi-Fi içindir. Uzaktan izlemek için PC ve telefona "
+                    "Tailscale kurup aynı hesapla giriş yapın; Ayarlar’da Tailscale "
+                    "durumu yeşil olunca Portal adresini kullanın."
                 )
             aciklama = QLabel(aciklama_metin)
             aciklama.setObjectName("not")

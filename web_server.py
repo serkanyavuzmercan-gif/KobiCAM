@@ -269,12 +269,6 @@ class WebServerThread(QThread):
     def request_stop(self) -> None:
         self._dur = True
         hls_hepsini_durdur()
-        try:
-            from pyngrok import ngrok
-
-            ngrok.kill()
-        except Exception:
-            pass
         sunucu = self._sunucu
         if sunucu is not None:
             sunucu.should_exit = True
@@ -290,19 +284,14 @@ class WebServerThread(QThread):
         bind = str(self._config.get("web_bind") or "0.0.0.0")
         port = int(self._config.get("web_port") or 8765)
         from network_scanner import yerel_ipv4_adresleri
+        from utils.network_helper import get_tailscale_ip
 
-        lan = (yerel_ipv4_adresleri() or ["127.0.0.1"])[0]
-        public = f"http://{lan}:{port}"
-        if self._config.get("ngrok_enabled") and str(self._config.get("ngrok_authtoken") or "").strip():
-            try:
-                from pyngrok import ngrok
-
-                ngrok.set_auth_token(str(self._config.get("ngrok_authtoken")).strip())
-                tunel = ngrok.connect(port, "http")
-                public = str(tunel.public_url)
-            except Exception as hata:
-                _log.exception("Ngrok")
-                self.hata.emit(f"Ngrok: {hata}")
+        ts = get_tailscale_ip()
+        if ts:
+            public = f"http://{ts}:{port}"
+        else:
+            lan = (yerel_ipv4_adresleri() or ["127.0.0.1"])[0]
+            public = f"http://{lan}:{port}"
         self.url_hazir.emit(public)
         bekci = threading.Thread(target=self._hls_bekci, daemon=True)
         bekci.start()

@@ -148,11 +148,10 @@ _BOLUMLER: list[tuple[str, str]] = [
     (
         "14. Uzak izleme (web / telefon)",
         "Ayarlar → Web / mobil’de «Yayını başlat» kutusunu işaretleyip Kaydet’e basın. "
-        "Aynı Wi-Fi’daysanız telefon tarayıcısına bilgisayarın IP adresi ve portunu yazın. "
-        "Farklı Wi-Fi veya dışarıdan izlemek için «Uzaktan / farklı Wi-Fi’dan izle» "
-        "kutusunu açın, Ngrok anahtarını girin; Kaydet sonrası Portal adresindeki "
-        "bağlantıyı kullanın. Giriş, KobiCAM kullanıcı adı ve şifrenizledir. "
-        "Üst menü: Uzak izleme (Ctrl+Shift+W).",
+        "PC ve telefonunuza Tailscale yükleyip aynı hesapla giriş yapın. Durum yeşil "
+        "olunca Portal adresini (http://100.x.y.z:8765) telefon tarayıcısına yazın; "
+        "farklı Wi-Fi ve hücresel veride de çalışır. Giriş, KobiCAM kullanıcı adı ve "
+        "şifrenizledir. Üst menü: Uzak izleme (Ctrl+Shift+W).",
     ),
 ]
 

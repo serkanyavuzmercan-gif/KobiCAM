@@ -89,7 +89,7 @@ def _alan_sifrele(deger: Any, url_mu: bool) -> tuple[Any, bool]:
 def gocet_duz_metin(veri: dict[str, Any]) -> bool:
     """Düz metin sırları ENC: yapar. Değişiklik olduysa True."""
     degisti = False
-    for anahtar in ("gdrive_oauth_client_secret", "ngrok_authtoken"):
+    for anahtar in ("gdrive_oauth_client_secret",):
         yeni, oldu = _alan_sifrele(veri.get(anahtar) or "", False)
         if oldu:
             veri[anahtar] = yeni
@@ -116,7 +116,7 @@ def gocet_duz_metin(veri: dict[str, Any]) -> bool:
 
 def bellege_coz(veri: dict[str, Any]) -> None:
     """ENC: alanlarını bellekte düz metne çevirir. MAC hatası yutulmaz, boşaltılır."""
-    for anahtar in ("gdrive_oauth_client_secret", "ngrok_authtoken"):
+    for anahtar in ("gdrive_oauth_client_secret",):
         ham = veri.get(anahtar)
         if isinstance(ham, str) and ham.startswith(_ONEK):
             try:

@@ -3,7 +3,7 @@
 Windows için yerel ağ kamera / DVR izleme yazılımı.  
 Local-network camera and DVR monitoring software for Windows.
 
-**Sürüm / Version:** 1.2.1  
+**Sürüm / Version:** 1.2.2  
 **Geliştirici / Author:** Serkan Yavuz Mercan  
 **İletişim / Contact:** [serkanyavuzmercan@gmail.com](mailto:serkanyavuzmercan@gmail.com)
 
@@ -15,11 +15,11 @@ Local-network camera and DVR monitoring software for Windows.
 
 Kurulum dosyası kaynak kodun yanında [Releases](../../releases) sayfasındadır:
 
-- **[KobiCAM-Setup-1.2.1.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.2.2.exe](../../releases/latest)** — Windows 10/11 (64-bit)
 
 Kurulum sihirbazını çalıştırın. İsterseniz masaüstü kısayolu oluşturun. İlk açılışta kendi kullanıcı hesabınızı tanımlarsınız.
 
-1.2.1 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
+1.2.2 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
 
 ### Ne işe yarar?
 
@@ -38,7 +38,7 @@ KobiCAM, ofis veya işyerindeki **kayıt cihazı (DVR/NVR)** ve IP kameraları a
 - Özel pencere çubuğu, klavye kısayolları (Yardım → Klavye kısayolları)
 - **Bulut (Google Drive)** döngüsel segment senkronu (OAuth, isteğe bağlı)
 - **Analitik:** tek kamerada insan sayımı ve kalma süresi; canlı panel ve hücre etiketi
-- **Web / mobil portal:** aynı Wi-Fi veya Ngrok ile uzaktan; QR kod; en fazla 4 yayın
+- **Web / mobil portal:** aynı Wi-Fi veya Tailscale ile uzaktan; QR kod; en fazla 4 yayın
 
 ### Kullanım (kısa)
 
@@ -80,7 +80,7 @@ GPU yoksa CPU’da `yolov8n` ve varsayılan 5 fps kullanılır. Model `assets/yo
 Varsayılan kapalıdır. **Ayarlar → Web / mobil** içinde **Yayını başlat** kutusunu işaretleyip Kaydet’e basın. Giriş, KobiCAM kullanıcı adı/şifresidir. RTSP adresleri tarayıcıya gitmez. En fazla 4 kamera.
 
 - Aynı Wi-Fi: `http://<pc-ip>:8765` (varsayılan port 8765)
-- Farklı Wi-Fi / dışarıdan: **Uzaktan / farklı Wi-Fi’dan izle (Ngrok)** ve Ngrok anahtarı; adres **Portal adresi** alanında ve **Uzak izleme (Ctrl+Shift+W)** penceresinde (QR ile). DVR portlarını internete açmayın; PC ve KobiCAM açık olmalıdır.
+- Farklı Wi-Fi / hücresel: PC ve telefona [Tailscale](https://tailscale.com) kurup aynı hesapla giriş yapın. **Ayarlar → Web / mobil** yeşil **Tailscale Bağlı: 100.x.y.z** gösterince Portal adresini (`http://100.x.y.z:8765`) tarayıcıya yazın. DVR portlarını internete açmayın; PC, KobiCAM ve Tailscale açık olmalıdır.
 
 ### Kaynak koddan çalıştırma
 
@@ -101,7 +101,7 @@ Gerekenler: Python, [Inno Setup 6](https://jrsoftware.org/isinfo.php). Paket bü
 build_release.bat
 ```
 
-Çıktı: `setup\Output\KobiCAM-Setup-1.2.1.exe` (Inno Setup 6 gerekir). Eski yol: `setup.bat`.
+Çıktı: `setup\Output\KobiCAM-Setup-1.2.2.exe` (Inno Setup 6 gerekir). Eski yol: `setup.bat`.
 
 ### Lisans
 
@@ -115,11 +115,11 @@ Tüm hakları saklıdır. Serkan Yavuz Mercan.
 
 The Windows installer is published on the [Releases](../../releases) page (not inside the source tree):
 
-- **[KobiCAM-Setup-1.2.1.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.2.2.exe](../../releases/latest)** — Windows 10/11 (64-bit)
 
 Run the wizard. Optionally create a desktop shortcut. On first launch you create your own user account.
 
-The 1.2.1 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
+The 1.2.2 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
 
 ### What it is
 
@@ -138,7 +138,7 @@ KobiCAM is a video management client for **DVR/NVR recorders** and IP cameras on
 - Custom title bar and keyboard shortcuts (Help → Keyboard shortcuts)
 - **Cloud (Google Drive)** cyclic segment sync (OAuth, optional)
 - **Analytics:** people counting and dwell time; live status panel and cell overlay
-- **Web / mobile portal:** same Wi-Fi or remote via Ngrok; QR code; up to 4 streams
+- **Web / mobile portal:** same Wi-Fi or remote via Tailscale; QR code; up to 4 streams
 
 ### Quick start
 
@@ -180,7 +180,7 @@ On CPU, `yolov8n` at 5 fps is the default. The weights file is `assets/yolov8n.p
 Off by default. Under **Settings → Web / mobile**, check **Start broadcast** and click Save. Login uses the same KobiCAM username/password. RTSP URLs are never sent to the browser. At most 4 cameras.
 
 - Same Wi-Fi: `http://<pc-ip>:8765` (default port 8765)
-- Different Wi-Fi / remote: enable **Remote / other Wi-Fi (Ngrok)** and enter your Ngrok key; the URL appears under **Portal address** and **Remote viewing (Ctrl+Shift+W)** (QR). Do not expose DVR ports; the PC and KobiCAM must stay running.
+- Different Wi-Fi / cellular: install [Tailscale](https://tailscale.com) on the PC and phone with the same account. When **Settings → Web / mobile** shows green **Tailscale connected: 100.x.y.z**, open the portal URL (`http://100.x.y.z:8765`) on the phone. Do not expose DVR ports; the PC, KobiCAM and Tailscale must stay running.
 
 ### Run from source
 
@@ -201,7 +201,7 @@ Requires Python and [Inno Setup 6](https://jrsoftware.org/isinfo.php). The packa
 build_release.bat
 ```
 
-Output: `setup\Output\KobiCAM-Setup-1.2.1.exe` (requires Inno Setup 6). Legacy: `setup.bat`.
+Output: `setup\Output\KobiCAM-Setup-1.2.2.exe` (requires Inno Setup 6). Legacy: `setup.bat`.
 
 ### License
 

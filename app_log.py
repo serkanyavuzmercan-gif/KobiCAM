@@ -18,7 +18,6 @@ _KALIPLAR: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(authtoken\s*[=:]\s*)([^\s&;'\"]+)", re.I), r"\1****"),
     (re.compile(r"(Bearer\s+)[A-Za-z0-9._\-]+", re.I), r"\1****"),
     (re.compile(r"ENC:[A-Za-z0-9+/=]+"), "ENC:****"),
-    (re.compile(r"(ngrok[^\s]*[=:]\s*)([^\s&;'\"]+)", re.I), r"\1****"),
     (re.compile(r"(://[^:/@\s]+):([^@/\s]+)@"), r"\1:****@"),
 )
 

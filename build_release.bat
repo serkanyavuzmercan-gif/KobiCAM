@@ -74,5 +74,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo Kurulum: setup\Output\KobiCAM-Setup-1.2.1.exe
+echo Kurulum: setup\Output\KobiCAM-Setup-1.2.2.exe
 endlocal
