@@ -3,7 +3,7 @@
 Windows için yerel ağ kamera / DVR izleme yazılımı.  
 Local-network camera and DVR monitoring software for Windows.
 
-**Sürüm / Version:** 1.1.2  
+**Sürüm / Version:** 1.2.0  
 **Geliştirici / Author:** Serkan Yavuz Mercan  
 **İletişim / Contact:** [serkanyavuzmercan@gmail.com](mailto:serkanyavuzmercan@gmail.com)
 
@@ -15,9 +15,11 @@ Local-network camera and DVR monitoring software for Windows.
 
 Kurulum dosyası kaynak kodun yanında [Releases](../../releases) sayfasındadır:
 
-- **[KobiCAM-Setup-1.1.2.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.2.0.exe](../../releases/latest)** — Windows 10/11 (64-bit)
 
 Kurulum sihirbazını çalıştırın. İsterseniz masaüstü kısayolu oluşturun. İlk açılışta kendi kullanıcı hesabınızı tanımlarsınız.
+
+1.2.0 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
 
 ### Ne işe yarar?
 
@@ -33,6 +35,9 @@ KobiCAM, ofis veya işyerindeki **kayıt cihazı (DVR/NVR)** ve IP kameraları a
 - PTZ, dijital yakınlaştırma, HD/SD, canlı ses
 - Tanılama (F8): bu bilgisayarın IP’si, ping, açık portlar
 - Özel pencere çubuğu, klavye kısayolları (Yardım → Klavye kısayolları)
+- **Google Drive** döngüsel segment senkronu (OAuth, isteğe bağlı)
+- **Analitik:** tek kamerada insan sayımı ve kalma süresi (YOLOv8n + ByteTrack)
+- **Web / mobil portal:** JWT + HLS, en fazla 4 yayın; isteğe bağlı ngrok
 
 ### Kullanım (kısa)
 
@@ -43,6 +48,41 @@ KobiCAM, ofis veya işyerindeki **kayıt cihazı (DVR/NVR)** ve IP kameraları a
 
 Ayrıntı: uygulamada **Yardım → Nasıl çalışır? (F1)**.
 
+### Güvenlik
+
+Gömülü yedek `admin` hesabı yoktur. İlk kurulumda bir kez gösterilen **kurtarma kodunu** saklayın; giriş ekranından parola sıfırlanır. DVR/RTSP şifreleri `config.json` içinde AES-256-GCM (`ENC:`) ile durur; Master Key Windows Credential Manager / DPAPI’dedir. Windows kullanıcısı değişirse kamera sırları çözülemez. Web JWT süreç belleğindedir; KobiCAM kapanınca oturumlar düşer.
+
+### Google Drive (OAuth)
+
+Manuel kırmızı kayıt butonu değişmez. Drive, seçili kameralar için ayrı 5 dakikalık (varsayılan) MP4 segmentleri yazar ve `KobiCAM_Cloud` klasörüne yükler. 120 saatten eski Drive dosyaları silinir.
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Enable **Google Drive API**.
+2. Credentials → Create credentials → **OAuth client ID** → Application type **Desktop app**.
+3. Client ID ve Client secret’ı **Ayarlar → Google Drive** alanlarına yapıştırın.
+4. **Google’a bağlan** — tarayıcı açılır; token `%APPDATA%\KobiCAM\gdrive_token.json` dosyasına yazılır.
+5. Senkronlanacak kameraları işaretleyip Drive senkronunu açın.
+
+Kapsam: `drive.file` (yalnızca uygulamanın oluşturduğu dosyalar). Kota dolarsa kuyruk durur; durum çubuğunda görünür.
+
+### Analitik (insan sayımı)
+
+Tek kamera, ayrı düşük FPS FFmpeg borusu; ızgara görüntüsü kilitlenmez.
+
+1. **Ayarlar → Analitik** ile açın ve kamerayı seçin.
+2. **Analitik → İnsan sayımı (Ctrl+Shift+A)** penceresinde kare üzerine **iki tıklama** ile sayım çizgisi çizin ve kaydedin.
+3. Giren / çıkan / ortalama kalma süresi `analytics.db` içinde tutulur; pencerede saatlik çubuk grafik vardır.
+
+GPU yoksa CPU’da `yolov8n` ve varsayılan 5 fps kullanılır. Model `assets/yolov8n.pt` içindedir.
+
+### Web / mobil portal
+
+Varsayılan kapalıdır. Açılınca FastAPI `0.0.0.0:8765` (ayarlanabilir) dinler. Giriş, KobiCAM kullanıcı adı/şifresidir; JWT yaklaşık 12 saat geçerlidir. RTSP adresleri API’de görünmez. En fazla 4 HLS yeniden kodlama.
+
+- LAN: `http://<pc-ip>:8765`
+- WAN: **Ayarlar → Web** içinde ngrok authtoken; adres durum çubuğunda ve **Uzak izleme (Ctrl+Shift+W)** menüsünde. DVR portlarını internete açmayın; PC ve KobiCAM açık olmalıdır.
+
+Safari native HLS, Chrome için hls.js kullanır.
+
 ### Kaynak koddan çalıştırma
 
 Python 3.10+ gerekir.
@@ -52,15 +92,17 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Not: `opencv-python` (GUI) kurulmaz; `opencv-python-headless` kullanılır.
+
 ### Kurulum paketini yeniden derleme
 
-Gerekenler: Python, [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+Gerekenler: Python, [Inno Setup 6](https://jrsoftware.org/isinfo.php). Paket büyüktür (torch / YOLO).
 
 ```bat
-setup.bat
+build_release.bat
 ```
 
-Çıktı: `setup\Output\KobiCAM-Setup-<sürüm>.exe`
+Çıktı: `setup\Output\KobiCAM-Setup-1.2.0-TEST.exe` (Inno Setup 6 gerekir). Eski yol: `setup.bat`.
 
 ### Lisans
 
@@ -74,9 +116,11 @@ Tüm hakları saklıdır. Serkan Yavuz Mercan.
 
 The Windows installer is published on the [Releases](../../releases) page (not inside the source tree):
 
-- **[KobiCAM-Setup-1.1.2.exe](../../releases/latest)** — Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.2.0.exe](../../releases/latest)** — Windows 10/11 (64-bit)
 
 Run the wizard. Optionally create a desktop shortcut. On first launch you create your own user account.
+
+The 1.2.0 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
 
 ### What it is
 
@@ -92,6 +136,9 @@ KobiCAM is a video management client for **DVR/NVR recorders** and IP cameras on
 - PTZ, digital zoom, HD/SD, live audio
 - Diagnostics (F8): this PC’s IP, ping, open ports
 - Custom title bar and keyboard shortcuts (Help → Keyboard shortcuts)
+- **Google Drive** cyclic segment sync (OAuth, optional)
+- **Analytics:** people counting and dwell time on one camera (YOLOv8n + ByteTrack)
+- **Web / mobile portal:** JWT + HLS, up to 4 streams; optional ngrok
 
 ### Quick start
 
@@ -102,6 +149,41 @@ KobiCAM is a video management client for **DVR/NVR recorders** and IP cameras on
 
 Full guide: **Help → How it works (F1)** in the app.
 
+### Security
+
+There is no hardcoded backup admin. At first setup you get a one-time **recovery key**; use it on the login screen to reset the password. DVR/RTSP secrets in `config.json` are AES-256-GCM (`ENC:`). The Master Key lives in Windows Credential Manager / DPAPI; a different Windows user cannot decrypt them. The web JWT is in-process only and is discarded when KobiCAM exits.
+
+### Google Drive (OAuth)
+
+The manual red record button is unchanged. Drive writes separate 5-minute (default) MP4 segments for selected cameras and uploads them to a `KobiCAM_Cloud` folder. Files older than 120 hours are deleted on Drive.
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → enable **Google Drive API**.
+2. Credentials → Create credentials → **OAuth client ID** → Application type **Desktop app**.
+3. Paste Client ID and secret under **Settings → Google Drive**.
+4. **Connect to Google** — a browser window opens; the token is stored at `%APPDATA%\KobiCAM\gdrive_token.json`.
+5. Check cameras to sync and enable Drive sync.
+
+Scope: `drive.file`. If quota is exceeded, the queue pauses and the status bar shows a message.
+
+### Analytics (people counting)
+
+One camera only, on a separate low-FPS FFmpeg pipe so the live grid does not stall.
+
+1. Enable it under **Settings → Analytics** and pick the camera.
+2. **Analytics → People counting (Ctrl+Shift+A)**: click twice on the preview to draw the counting line and save it.
+3. In / out / average dwell are stored in `analytics.db`; the window shows today’s hourly bars.
+
+On CPU, `yolov8n` at 5 fps is the default. The weights file is `assets/yolov8n.pt`.
+
+### Web / mobile portal
+
+Off by default. When enabled, FastAPI listens on `0.0.0.0:8765` (configurable). Login uses the same KobiCAM username/password; JWT lasts about 12 hours. RTSP URLs are never sent to the browser. At most 4 HLS re-encodes.
+
+- LAN: `http://<pc-ip>:8765`
+- WAN: ngrok authtoken under **Settings → Web**; the public URL is in the status bar and **Remote viewing (Ctrl+Shift+W)**. Do not expose DVR ports; the PC and KobiCAM must stay running.
+
+Safari uses native HLS; Chrome uses hls.js.
+
 ### Run from source
 
 Python 3.10+ is required.
@@ -111,15 +193,17 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Note: GUI `opencv-python` is not installed; use `opencv-python-headless`.
+
 ### Rebuild the installer
 
-Requires Python and [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+Requires Python and [Inno Setup 6](https://jrsoftware.org/isinfo.php). The package is large (torch / YOLO).
 
 ```bat
-setup.bat
+build_release.bat
 ```
 
-Output: `setup\Output\KobiCAM-Setup-<version>.exe`
+Output: `setup\Output\KobiCAM-Setup-1.2.0-TEST.exe` (requires Inno Setup 6). Legacy: `setup.bat`.
 
 ### License
 

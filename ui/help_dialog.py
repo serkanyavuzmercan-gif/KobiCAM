@@ -48,9 +48,11 @@ QPushButton#primary:hover { background-color: #3d9cf0; }
 _BOLUMLER: list[tuple[str, str]] = [
     (
         "1. Giriş",
-        "Program açılışta kullanıcı adı ve şifre ister. İlk kurulumda yönetici "
-        "hesabını kendiniz oluşturursunuz. Bu şifre KobiCAM'e girişi korur; "
-        "kameraların şifresiyle ilgisi yoktur.",
+        "Program açılışta kullanıcı adı ve şifre ister. İlk kurulumda hesabınızı "
+        "kendiniz oluşturursunuz ve bir kez gösterilen kurtarma kodunu not edersiniz. "
+        "Gömülü yedek yönetici hesabı yoktur. DVR/kamera şifreleri diskte AES-256-GCM "
+        "ile saklanır; anahtar Windows Credential Manager / DPAPI’dedir. Windows "
+        "kullanıcısı değişirse bu sırlar çözülemez.",
     ),
     (
         "2. Cihaz ekleme (DVR / NVR / IP kamera)",
@@ -130,6 +132,32 @@ _BOLUMLER: list[tuple[str, str]] = [
         "Kamera komutları (Ctrl+P anlık görüntü, Ctrl+R kayıt, Ctrl+U ses gibi) seçili "
         "ızgara hücresine uygulanır; hücreyi tek tıklayarak seçersiniz.",
     ),
+    (
+        "12. Google Drive (isteğe bağlı)",
+        "Ayarlar → Google Drive ile döngüsel bulut kaydını açarsınız. Google Cloud’da "
+        "Desktop OAuth istemcisi oluşturup Client ID ve secret’ı yapıştırın, ardından "
+        "Google’a bağlanın. Seçili kameralar 5 dakikalık (varsayılan) MP4 segmentleri "
+        "yazar; yükleme sonrası Drive’da 120 saatten eski dosyalar silinir.\n"
+        "EN: Optional cyclic upload via Installed App OAuth (drive.file). Token is stored "
+        "in %APPDATA%\\KobiCAM\\gdrive_token.json. Retention default is 120 hours.",
+    ),
+    (
+        "13. Analitik (insan sayımı)",
+        "Tek kamerada YOLOv8n + ByteTrack çalışır; ızgaradaki diğer hücreler etkilenmez. "
+        "Ayarlar’dan Analitik’i açın, Analitik → İnsan sayımı ile kare üzerine iki tıklama "
+        "ile sayım çizgisi çizin. Giren/çıkan ve ortalama kalma süresi SQLite’a yazılır.\n"
+        "EN: One camera only, separate low-FPS FFmpeg pipe. Draw a 0–1 normalized line on "
+        "the preview; hourly bars show today’s in/out counts.",
+    ),
+    (
+        "14. Uzak izleme (web / telefon)",
+        "Ayarlar → Web ile yerel portal açılır (varsayılan port 8765). Aynı KobiCAM "
+        "kullanıcı adı/şifresiyle giriş yapılır; yayın HLS’tir, en fazla 4 kamera. "
+        "Ngrok token varsa WAN adresi durum çubuğunda görünür; yoksa LAN IP kullanın. "
+        "DVR portlarını internete açmanız gerekmez. Menü: Uzak izleme (Ctrl+Shift+W).\n"
+        "EN: FastAPI + JWT (~12 h). HLS is JWT/cookie protected. WAN needs the PC and "
+        "KobiCAM running; default web_enabled is off.",
+    ),
 ]
 
 # Yardım → Klavye kısayolları penceresinin içeriği
@@ -194,6 +222,13 @@ KISAYOLLAR: list[tuple[str, list[tuple[str, str]]]] = [
             ("Nasıl çalışır?", "F1"),
             ("Klavye kısayolları", "Ctrl+F1"),
             ("İletişim", "Shift+F1"),
+        ],
+    ),
+    (
+        "Bulut / Analitik / Uzak izleme",
+        [
+            ("İnsan sayımı", "Ctrl+Shift+A"),
+            ("Portal adresini göster", "Ctrl+Shift+W"),
         ],
     ),
 ]

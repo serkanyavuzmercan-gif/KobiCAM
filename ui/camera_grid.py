@@ -161,8 +161,10 @@ class CameraGrid(QWidget):
                 worker.request_stop()
                 isciler.append(worker)
         for worker in isciler:
-            worker.wait(3000)
-            worker.deleteLater()
+            if worker.wait(3000):
+                worker.deleteLater()
+            else:
+                worker.finished.connect(worker.deleteLater)
 
     def _diz(self) -> None:
         while self._yerlesim.count():

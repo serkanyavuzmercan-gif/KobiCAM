@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KobiCAM VMS</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div id="login" class="kart">
+    <h1>KobiCAM VMS</h1>
+    <p class="alt">Uzaktan izleme</p>
+    <label>Kullanıcı</label>
+    <input id="user" autocomplete="username" />
+    <label>Şifre</label>
+    <input id="pass" type="password" autocomplete="current-password" />
+    <button id="giris" type="button">Giriş</button>
+    <p id="hata" class="hata"></p>
+  </div>
+  <div id="app" hidden>
+    <header>
+      <strong>KobiCAM</strong>
+      <span id="kim"></span>
+      <select id="izgara">
+        <option value="1">1’li</option>
+        <option value="4" selected>4’lü</option>
+      </select>
+      <button id="cikis" type="button">Çıkış</button>
+    </header>
+    <div id="grid" class="grid4"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

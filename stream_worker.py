@@ -1,8 +1,8 @@
 """
 RTSP akış işçisi.
 
-Her kamera ayrı bir FFmpeg sürecinde çözülür. OpenCV aynı süreçte
-birden fazla RTSP açınca (2–3. kamerada) tüm uygulamayı kapatıyordu.
+Her kamera ayrı bir FFmpeg sürecinde çözülür. Kopunca aynı QThread içinde
+üstel backoff ile yeniden bağlanır; GUI thread uyutulmaz.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ import time
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtGui import QImage
 
+from app_log import get_logger
+from process_util import ffmpeg_kapat
 from record_session import ffmpeg_yolu
 
 _GENISLIK = 960
@@ -22,6 +24,7 @@ _YUKSEKLIK = 540
 _KARE_BOYUT = _GENISLIK * _YUKSEKLIK * 3
 _baslangic_kilidi = threading.Lock()
 _son_baslangic = 0.0
+_log = get_logger("stream")
 
 
 class StreamWorker(QThread):
@@ -52,6 +55,33 @@ class StreamWorker(QThread):
             self._calisiyor = False
             return
 
+        bekle = 2.0
+        try:
+            while self._calisiyor and not self.isInterruptionRequested():
+                if not self._oturum(ffmpeg, url):
+                    if not self._calisiyor or self.isInterruptionRequested():
+                        break
+                    mesaj = self._son_hata or "Akış koptu, yeniden bağlanılıyor…"
+                    self.stream_error.emit(mesaj)
+                    _log.warning("RTSP koptu, %.0fs sonra denenecek", bekle)
+                    bitis = time.monotonic() + bekle
+                    while self._calisiyor and time.monotonic() < bitis:
+                        if self.isInterruptionRequested():
+                            return
+                        time.sleep(0.2)
+                    bekle = min(30.0, bekle * 2)
+                else:
+                    bekle = 2.0
+        except Exception:
+            _log.exception("StreamWorker çöktü")
+            if self._calisiyor:
+                self.stream_error.emit("Akış işçisi beklenmeyen hata.")
+        finally:
+            self._sureci_kapat()
+            self._calisiyor = False
+
+    def _oturum(self, ffmpeg: str, url: str) -> bool:
+        """True: durdurma isteğiyle çıktı. False: kopma / hata."""
         komut = [
             ffmpeg,
             "-hide_banner",
@@ -77,12 +107,11 @@ class StreamWorker(QThread):
 
         global _son_baslangic
         with _baslangic_kilidi:
-            bekle = 0.4 - (time.monotonic() - _son_baslangic)
-            if bekle > 0:
-                time.sleep(bekle)
-            if not self._calisiyor:
-                self._calisiyor = False
-                return
+            aralik = 0.4 - (time.monotonic() - _son_baslangic)
+            if aralik > 0:
+                time.sleep(aralik)
+            if not self._calisiyor or self.isInterruptionRequested():
+                return True
             try:
                 self._proc = subprocess.Popen(
                     komut,
@@ -93,9 +122,8 @@ class StreamWorker(QThread):
                     creationflags=bayrak,
                 )
             except OSError as hata:
-                self.stream_error.emit(f"Akış başlatılamadı: {hata}")
-                self._calisiyor = False
-                return
+                self._son_hata = f"Akış başlatılamadı: {hata}"
+                return False
             _son_baslangic = time.monotonic()
 
         proc = self._proc
@@ -106,14 +134,13 @@ class StreamWorker(QThread):
                 daemon=True,
             ).start()
 
+        kare_var = False
         try:
             while self._calisiyor and not self.isInterruptionRequested():
                 buf = self._kare_oku(proc)
                 if buf is None:
-                    mesaj = self._son_hata or "Akış açılamadı (RTSP/kimlik bilgisi)."
-                    if self._calisiyor:
-                        self.stream_error.emit(mesaj)
-                    break
+                    return (not self._calisiyor) or self.isInterruptionRequested()
+                kare_var = True
                 qimg = QImage(
                     buf,
                     _GENISLIK,
@@ -125,7 +152,7 @@ class StreamWorker(QThread):
                     self.frame_ready.emit(qimg.copy())
         finally:
             self._sureci_kapat()
-            self._calisiyor = False
+        return kare_var and ((not self._calisiyor) or self.isInterruptionRequested())
 
     def _kare_oku(self, proc: subprocess.Popen[bytes]) -> bytes | None:
         if proc.stdout is None:
@@ -154,26 +181,7 @@ class StreamWorker(QThread):
     def _sureci_kapat(self) -> None:
         proc = self._proc
         self._proc = None
-        if proc is None:
-            return
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-            except OSError:
-                pass
-            try:
-                proc.wait(timeout=1.5)
-            except Exception:
-                try:
-                    proc.kill()
-                except OSError:
-                    pass
-        for boru in (proc.stdout, proc.stderr):
-            if boru is not None:
-                try:
-                    boru.close()
-                except Exception:
-                    pass
+        ffmpeg_kapat(proc, nazik=False, bekle_term=1.5)
 
     def request_stop(self) -> None:
         """Beklemeden durdurma (ızgara gizleme ve hücre değişimi)."""
@@ -189,5 +197,4 @@ class StreamWorker(QThread):
     def stop(self) -> None:
         """İşçiyi durdurur ve bitmesini bekler."""
         self.request_stop()
-        if not self.wait(3000):
-            pass
+        self.wait(3000)

@@ -1,6 +1,5 @@
-; KobiCAM VMS — Inno Setup 6 (setup\ altından derleme)
-; Kanonik script: ..\KobiCAM_Setup.iss
-; Derlemek için: ..\build_release.bat  veya  ISCC.exe ..\KobiCAM_Setup.iss
+; KobiCAM VMS — Inno Setup 6
+; Derlemek için: build_release.bat  veya  ISCC.exe KobiCAM_Setup.iss
 
 #define MyAppName "KobiCAM VMS"
 #define MyAppVersion "1.2.0"
@@ -19,15 +18,15 @@ AppPublisherURL=
 DefaultDirName={autopf}\KobiCAM
 DefaultGroupName=KobiCAM
 DisableProgramGroupPage=yes
-OutputDir=Output
+OutputDir=setup\Output
 OutputBaseFilename=KobiCAM-Setup-1.2.0-TEST
-SetupIconFile=..\assets\kobicam.ico
+SetupIconFile=assets\kobicam.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-WizardImageFile=wizard-large.bmp
-WizardSmallImageFile=wizard-small.bmp
+WizardImageFile=setup\wizard-large.bmp
+WizardSmallImageFile=setup\wizard-small.bmp
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 MinVersion=10.0
@@ -50,8 +49,8 @@ Name: "{userappdata}\KobiCAM\models"; Flags: uninsneveruninstall
 Name: "{userappdata}\KobiCAM\recordings"; Flags: uninsneveruninstall
 
 [Files]
-Source: "..\dist\KobiCAM\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\assets\yolov8n.pt"; DestDir: "{userappdata}\KobiCAM\models"; DestName: "yolov8n.pt"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
+Source: "dist\KobiCAM\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "assets\yolov8n.pt"; DestDir: "{userappdata}\KobiCAM\models"; DestName: "yolov8n.pt"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 Name: "{autoprograms}\KobiCAM\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Kamera izleme yazılımı"

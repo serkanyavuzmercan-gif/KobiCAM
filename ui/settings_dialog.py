@@ -1,16 +1,17 @@
 """
 Kalıcı ayarlar penceresi.
 
-Varsayılan ızgara, kayıt klasörü, anlık görüntü formatı ve akış tercihleri.
+Genel, Google Drive, analitik ve web portal sekmeleri.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -18,8 +19,14 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
     QPushButton,
+    QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -28,10 +35,28 @@ from app_info import APP_DISPLAY_NAME, uygulama_ikonu
 from config_manager import ConfigManager
 
 
+class _OAuthIsci(QThread):
+    bitti = pyqtSignal(str)
+
+    def __init__(self, cid: str, csec: str) -> None:
+        super().__init__()
+        self._cid = cid
+        self._csec = csec
+
+    def run(self) -> None:
+        try:
+            from gdrive_sync import oauth_calistir
+
+            oauth_calistir(self._cid, self._csec)
+            self.bitti.emit("")
+        except Exception as hata:
+            self.bitti.emit(str(hata))
+
+
 _STIL = """
 QDialog { background-color: #1a1d23; }
 QLabel { color: #c5cdd8; font-size: 12px; }
-QLineEdit, QComboBox {
+QLineEdit, QComboBox, QSpinBox, QListWidget {
     background-color: #12151a;
     color: #e8edf5;
     border: 1px solid #2e3440;
@@ -39,7 +64,7 @@ QLineEdit, QComboBox {
     padding: 6px 8px;
     min-height: 18px;
 }
-QLineEdit:focus, QComboBox:focus { border: 1px solid #3d9cf0; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #3d9cf0; }
 QComboBox QAbstractItemView {
     background-color: #12151a;
     color: #e8edf5;
@@ -55,9 +80,15 @@ QPushButton {
     padding: 6px 12px;
 }
 QPushButton:hover { border-color: #3d9cf0; color: #e8edf5; }
-QDialogButtonBox QPushButton {
-    min-width: 72px;
+QDialogButtonBox QPushButton { min-width: 72px; }
+QTabWidget::pane { border: 1px solid #2e3440; }
+QTabBar::tab {
+    background: #12151a;
+    color: #c5cdd8;
+    padding: 8px 14px;
+    border: 1px solid #2e3440;
 }
+QTabBar::tab:selected { background: #2b7fc4; color: #ffffff; }
 """
 
 
@@ -73,17 +104,32 @@ class SettingsDialog(QDialog):
         self._config = config
         self.setWindowTitle(f"{APP_DISPLAY_NAME} — Ayarlar")
         self.setWindowIcon(uygulama_ikonu())
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(520)
         self.setStyleSheet(_STIL)
 
         kok = QVBoxLayout(self)
-        kok.setContentsMargins(24, 20, 24, 16)
-        kok.setSpacing(14)
+        kok.setContentsMargins(16, 16, 16, 12)
+        sekmeler = QTabWidget()
+        sekmeler.addTab(self._sekme_genel(), "Genel")
+        sekmeler.addTab(self._sekme_drive(), "Google Drive")
+        sekmeler.addTab(self._sekme_analitik(), "Analitik")
+        sekmeler.addTab(self._sekme_web(), "Web / mobil")
+        kok.addWidget(sekmeler, 1)
 
-        form_kutu = QWidget()
-        form = QFormLayout(form_kutu)
+        dugmeler = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        dugmeler.accepted.connect(self._kaydet)
+        dugmeler.rejected.connect(self.reject)
+        kok.addWidget(dugmeler)
+
+    def _sekme_genel(self) -> QWidget:
+        kutu = QWidget()
+        form = QFormLayout(kutu)
         form.setSpacing(10)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        config = self._config
 
         self._izgara = QComboBox()
         for sayi, etiket in ((1, "1'li"), (4, "4'lü"), (9, "9'lu"), (16, "16'lı")):
@@ -132,24 +178,138 @@ class SettingsDialog(QDialog):
         form.addRow("Kayıt formatı", self._kayit)
         form.addRow("Açılış görüntü kalitesi", self._kalite)
         form.addRow("", self._zoom_main)
-        kok.addWidget(form_kutu)
+        return kutu
 
-        dugmeler = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+    def _sekme_drive(self) -> QWidget:
+        kutu = QWidget()
+        form = QFormLayout(kutu)
+        form.setSpacing(8)
+        cfg = self._config
+        self._gdrive_acik = QCheckBox("Google Drive senkronunu aç")
+        self._gdrive_acik.setChecked(bool(cfg.get("gdrive_enabled")))
+        self._gdrive_klasor = QLineEdit(str(cfg.get("gdrive_folder_name") or "KobiCAM_Cloud"))
+        self._gdrive_saat = QSpinBox()
+        self._gdrive_saat.setRange(24, 24 * 30)
+        self._gdrive_saat.setValue(int(cfg.get("gdrive_retention_hours") or 120))
+        self._gdrive_seg = QSpinBox()
+        self._gdrive_seg.setRange(60, 3600)
+        self._gdrive_seg.setSuffix(" sn")
+        self._gdrive_seg.setValue(int(cfg.get("gdrive_segment_seconds") or 300))
+        self._gdrive_sil = QCheckBox("Yüklendikten sonra yerel segmenti sil")
+        self._gdrive_sil.setChecked(bool(cfg.get("gdrive_delete_local", True)))
+        self._gdrive_cid = QLineEdit(str(cfg.get("gdrive_oauth_client_id") or ""))
+        self._gdrive_csec = QLineEdit(str(cfg.get("gdrive_oauth_client_secret") or ""))
+        self._gdrive_csec.setEchoMode(QLineEdit.EchoMode.Password)
+        self._gdrive_kameralar = QListWidget()
+        self._gdrive_kameralar.setMaximumHeight(140)
+        secili = set(str(x) for x in (cfg.get("gdrive_camera_ids") or []))
+        for kam in cfg.cameras():
+            kid = str(kam.get("id") or "")
+            if not kid:
+                continue
+            oge = QListWidgetItem(str(kam.get("name") or kid))
+            oge.setData(Qt.ItemDataRole.UserRole, kid)
+            oge.setFlags(oge.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            oge.setCheckState(
+                Qt.CheckState.Checked if kid in secili else Qt.CheckState.Unchecked
+            )
+            self._gdrive_kameralar.addItem(oge)
+        self._gdrive_baglan = QPushButton("Google hesabına bağlan…")
+        self._gdrive_baglan.clicked.connect(self._gdrive_oauth)
+        form.addRow(self._gdrive_acik)
+        form.addRow("Drive klasör adı", self._gdrive_klasor)
+        form.addRow("Saklama süresi (saat)", self._gdrive_saat)
+        form.addRow("Segment süresi", self._gdrive_seg)
+        form.addRow(self._gdrive_sil)
+        form.addRow("OAuth Client ID", self._gdrive_cid)
+        form.addRow("OAuth Client secret", self._gdrive_csec)
+        form.addRow("Senkron kameralar", self._gdrive_kameralar)
+        form.addRow(self._gdrive_baglan)
+        ipucu = QLabel(
+            "Google Cloud Console’da Desktop OAuth istemcisi oluşturun "
+            "(drive.file kapsamı). Token %APPDATA%\\KobiCAM\\gdrive_token.json dosyasına yazılır."
         )
-        dugmeler.accepted.connect(self._kaydet)
-        dugmeler.rejected.connect(self.reject)
-        kok.addWidget(dugmeler)
+        ipucu.setWordWrap(True)
+        form.addRow(ipucu)
+        return kutu
+
+    def _sekme_analitik(self) -> QWidget:
+        kutu = QWidget()
+        form = QFormLayout(kutu)
+        cfg = self._config
+        self._an_acik = QCheckBox("İnsan sayımı / kalma süresi analitiğini aç")
+        self._an_acik.setChecked(bool(cfg.get("analytics_enabled")))
+        self._an_kamera = QComboBox()
+        self._an_kamera.addItem("(seçilmedi)", "")
+        hedef = str(cfg.get("analytics_camera_id") or "")
+        for kam in cfg.cameras():
+            kid = str(kam.get("id") or "")
+            self._an_kamera.addItem(str(kam.get("name") or kid), kid)
+        idx = self._an_kamera.findData(hedef)
+        if idx >= 0:
+            self._an_kamera.setCurrentIndex(idx)
+        self._an_fps = QSpinBox()
+        self._an_fps.setRange(1, 15)
+        self._an_fps.setValue(int(cfg.get("analytics_fps") or 5))
+        form.addRow(self._an_acik)
+        form.addRow("Analiz kamerası", self._an_kamera)
+        form.addRow("İşleme FPS", self._an_fps)
+        ipucu = QLabel(
+            "Sayım çizgisini Analitik penceresinde (menü) son karenin üzerine çizin. "
+            "YOLOv8n CPU’da tek kamerada çalışır."
+        )
+        ipucu.setWordWrap(True)
+        form.addRow(ipucu)
+        return kutu
+
+    def _sekme_web(self) -> QWidget:
+        kutu = QWidget()
+        form = QFormLayout(kutu)
+        cfg = self._config
+        self._web_acik = QCheckBox("Yerel web / mobil portalı aç")
+        self._web_acik.setChecked(bool(cfg.get("web_enabled")))
+        self._web_bind = QLineEdit(str(cfg.get("web_bind") or "0.0.0.0"))
+        self._web_port = QSpinBox()
+        self._web_port.setRange(1024, 65535)
+        self._web_port.setValue(int(cfg.get("web_port") or 8765))
+        self._web_max = QSpinBox()
+        self._web_max.setRange(1, 4)
+        self._web_max.setValue(int(cfg.get("web_max_streams") or 4))
+        self._ngrok_acik = QCheckBox("Ngrok tüneli (WAN, port yönlendirme yok)")
+        self._ngrok_acik.setChecked(bool(cfg.get("ngrok_enabled")))
+        self._ngrok_token = QLineEdit(str(cfg.get("ngrok_authtoken") or ""))
+        self._ngrok_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._web_url = QLineEdit(str(cfg.get("web_last_url") or ""))
+        self._web_url.setReadOnly(True)
+        kopya = QPushButton("Kopyala")
+        kopya.clicked.connect(self._web_url_kopyala)
+        url_satir = QWidget()
+        url_y = QHBoxLayout(url_satir)
+        url_y.setContentsMargins(0, 0, 0, 0)
+        url_y.addWidget(self._web_url, 1)
+        url_y.addWidget(kopya)
+        form.addRow(self._web_acik)
+        form.addRow("Dinleme adresi", self._web_bind)
+        form.addRow("Port", self._web_port)
+        form.addRow("En fazla HLS yayın", self._web_max)
+        form.addRow(self._ngrok_acik)
+        form.addRow("Ngrok authtoken", self._ngrok_token)
+        form.addRow("Portal adresi", url_satir)
+        ipucu = QLabel(
+            "Tarayıcıdan http://bu-pc:port adresiyle giriş (KobiCAM kullanıcı/şifre). "
+            "DVR portları internete açılmaz."
+        )
+        ipucu.setWordWrap(True)
+        form.addRow(ipucu)
+        return kutu
 
     def _klasor_satiri(self, alan: QLineEdit, baslik: str) -> QWidget:
-        """Yol kutusu + Gözat + Aç düğmelerinden oluşan satır."""
         satir = QWidget()
         yerlesim = QHBoxLayout(satir)
         yerlesim.setContentsMargins(0, 0, 0, 0)
         gozat = QPushButton("Gözat…")
         gozat.clicked.connect(lambda: self._klasor_sec(alan, baslik))
         ac = QPushButton("Aç")
-        ac.setToolTip("Klasörü Windows Gezgini'nde aç")
         ac.clicked.connect(lambda: self._klasor_ac(alan))
         yerlesim.addWidget(alan, 1)
         yerlesim.addWidget(gozat)
@@ -167,6 +327,33 @@ class SettingsDialog(QDialog):
         yol.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(yol)))
 
+    def _gdrive_oauth(self) -> None:
+        cid = self._gdrive_cid.text().strip()
+        csec = self._gdrive_csec.text().strip()
+        if not cid or not csec:
+            QMessageBox.warning(
+                self,
+                "Google Drive",
+                "Önce OAuth Client ID ve secret girin, Tamam deyip tekrar bağlanın.",
+            )
+            return
+        self._config.set("gdrive_oauth_client_id", cid, kaydet=False)
+        self._config.set("gdrive_oauth_client_secret", csec, kaydet=False)
+        self._config.save()
+        self._gdrive_baglan.setEnabled(False)
+        self._gdrive_baglan.setText("Tarayıcı bekleniyor…")
+        self._oauth_isci = _OAuthIsci(cid, csec)
+        self._oauth_isci.bitti.connect(self._oauth_bitti)
+        self._oauth_isci.start()
+
+    def _oauth_bitti(self, hata: str) -> None:
+        self._gdrive_baglan.setEnabled(True)
+        self._gdrive_baglan.setText("Google hesabına bağlan…")
+        if hata:
+            QMessageBox.warning(self, "Google Drive", hata)
+            return
+        QMessageBox.information(self, "Google Drive", "Google hesabı bağlandı.")
+
     def _kaydet(self) -> None:
         self._config.set("grid_layout", int(self._izgara.currentData()), kaydet=False)
         self._config.set("record_folder", self._klasor.text().strip(), kaydet=False)
@@ -175,5 +362,38 @@ class SettingsDialog(QDialog):
         self._config.set("record_format", str(self._kayit.currentData()), kaydet=False)
         self._config.set_display_quality(str(self._kalite.currentData() or "low"), kaydet=False)
         self._config.set("main_stream_on_zoom", self._zoom_main.isChecked(), kaydet=False)
+
+        ids: list[str] = []
+        for i in range(self._gdrive_kameralar.count()):
+            oge = self._gdrive_kameralar.item(i)
+            if oge and oge.checkState() == Qt.CheckState.Checked:
+                ids.append(str(oge.data(Qt.ItemDataRole.UserRole) or ""))
+        self._config.set("gdrive_enabled", self._gdrive_acik.isChecked(), kaydet=False)
+        self._config.set("gdrive_folder_name", self._gdrive_klasor.text().strip() or "KobiCAM_Cloud", kaydet=False)
+        self._config.set("gdrive_retention_hours", int(self._gdrive_saat.value()), kaydet=False)
+        self._config.set("gdrive_segment_seconds", int(self._gdrive_seg.value()), kaydet=False)
+        self._config.set("gdrive_delete_local", self._gdrive_sil.isChecked(), kaydet=False)
+        self._config.set("gdrive_oauth_client_id", self._gdrive_cid.text().strip(), kaydet=False)
+        self._config.set("gdrive_oauth_client_secret", self._gdrive_csec.text(), kaydet=False)
+        self._config.set("gdrive_camera_ids", [x for x in ids if x], kaydet=False)
+
+        self._config.set("analytics_enabled", self._an_acik.isChecked(), kaydet=False)
+        self._config.set("analytics_camera_id", str(self._an_kamera.currentData() or ""), kaydet=False)
+        self._config.set("analytics_fps", int(self._an_fps.value()), kaydet=False)
+
+        self._config.set("web_enabled", self._web_acik.isChecked(), kaydet=False)
+        self._config.set("web_bind", self._web_bind.text().strip() or "0.0.0.0", kaydet=False)
+        self._config.set("web_port", int(self._web_port.value()), kaydet=False)
+        self._config.set("web_max_streams", int(self._web_max.value()), kaydet=False)
+        self._config.set("ngrok_enabled", self._ngrok_acik.isChecked(), kaydet=False)
+        self._config.set("ngrok_authtoken", self._ngrok_token.text().strip(), kaydet=False)
         self._config.save()
         self.accept()
+
+    def _web_url_kopyala(self) -> None:
+        metin = self._web_url.text().strip()
+        if not metin:
+            QMessageBox.information(self, "Uzak izleme", "Portal henüz ayağa kalkmadı.")
+            return
+        QApplication.clipboard().setText(metin)
+        QMessageBox.information(self, "Uzak izleme", "Adres panoya kopyalandı.")

@@ -15,6 +15,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from record_session import ffmpeg_yolu
+from process_util import ffmpeg_kapat
 
 
 def ffplay_yolu() -> str | None:
@@ -129,12 +130,7 @@ class AudioPlayer(QObject):
         self._proc = None
         if proc is None:
             return
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        ffmpeg_kapat(proc, nazik=False, bekle_term=2.0)
         self.state_changed.emit(False)
 
     def _kontrol(self) -> None:

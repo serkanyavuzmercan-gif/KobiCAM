@@ -18,10 +18,14 @@ $ErrorActionPreference = "Continue"
 & $Python -m pip uninstall -y opencv-python opencv-contrib-python 2>$null | Out-Null
 $ErrorActionPreference = $Onceki
 & $Python -m pip install -r "$Kok\requirements.txt" pyinstaller -q
+# Headless OpenCV GUI paketiyle çakışmasın; requirements opencv-python-headless kurar.
 if ($LASTEXITCODE -ne 0) { throw "pip install başarısız." }
 
+$Spec = Join-Path $Kok "KobiCAM.spec"
+if (-not (Test-Path $Spec)) { $Spec = Join-Path $Kok "kobicam.spec" }
+
 Write-Host "==> PyInstaller (onedir)"
-& $Python -m PyInstaller "$Kok\kobicam.spec" --noconfirm --clean
+& $Python -m PyInstaller $Spec --noconfirm --clean
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller başarısız." }
 
 $Exe = Join-Path $Kok "dist\KobiCAM\KobiCAM.exe"
@@ -41,9 +45,12 @@ if (-not $Iscc) {
     if ($found) { $Iscc = $found.Source }
 }
 
+$Iss = Join-Path $Kok "KobiCAM_Setup.iss"
+if (-not (Test-Path $Iss)) { $Iss = Join-Path $Kok "setup\KobiCAM.iss" }
+
 if ($Iscc) {
     Write-Host "==> Inno Setup"
-    & $Iscc "$Kok\setup\KobiCAM.iss"
+    & $Iscc $Iss
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup derlemesi başarısız." }
     $Kurulum = Get-ChildItem "$Kok\setup\Output\KobiCAM-Setup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($Kurulum) {

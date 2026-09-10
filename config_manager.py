@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from auth_manager import get_app_data_dir
+from security.crypto_manager import bellege_coz, disk_icin_sifrele, gocet_duz_metin
 
 
 # Uygulama varsayılanları — ilk açılışta bu şema yazılır
@@ -31,6 +32,26 @@ _VARSAYILANLAR: dict[str, Any] = {
     "cameras": [],
     "devices": [],             # DVR/NVR / IP cihazları
     "grid_slots": [],          # hücrelere bağlı kamera id'leri
+    "gdrive_enabled": False,
+    "gdrive_folder_name": "KobiCAM_Cloud",
+    "gdrive_retention_hours": 120,
+    "gdrive_camera_ids": [],
+    "gdrive_segment_seconds": 300,
+    "gdrive_oauth_client_id": "",
+    "gdrive_oauth_client_secret": "",
+    "gdrive_delete_local": True,
+    "analytics_enabled": False,
+    "analytics_camera_id": "",
+    "analytics_line": [],       # [x1, y1, x2, y2] 0–1
+    "analytics_fps": 5,
+    "web_enabled": False,
+    "web_bind": "0.0.0.0",
+    "web_port": 8765,
+    "web_jwt_secret": "",
+    "web_max_streams": 4,
+    "ngrok_enabled": False,
+    "ngrok_authtoken": "",
+    "web_last_url": "",
 }
 
 
@@ -52,17 +73,29 @@ class ConfigManager:
                 okunan = json.load(f)
             if isinstance(okunan, dict):
                 self._veri = {**deepcopy(_VARSAYILANLAR), **okunan}
+            self._veri["web_jwt_secret"] = ""
+            duz = gocet_duz_metin(deepcopy(self._veri))
+            bellege_coz(self._veri)
             self._cihazlari_gocet()
+            if duz:
+                self.save()
         except (OSError, json.JSONDecodeError):
             self._veri = deepcopy(_VARSAYILANLAR)
 
     def save(self) -> None:
-        """Mevcut ayarları atomik şekilde diske yazar."""
+        """Sırları ENC: olarak diske yazar; bellek düz metin kalır."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        yazilacak = disk_icin_sifrele(self._veri)
         gecici = self.path.with_suffix(".tmp")
         with gecici.open("w", encoding="utf-8") as f:
-            json.dump(self._veri, f, ensure_ascii=False, indent=2)
+            json.dump(yazilacak, f, ensure_ascii=False, indent=2)
         gecici.replace(self.path)
+        jwt_yol = self.path.parent / "web_jwt_secret.txt"
+        if jwt_yol.is_file():
+            try:
+                jwt_yol.unlink()
+            except OSError:
+                pass
 
     def get(self, anahtar: str, varsayilan: Any = None) -> Any:
         return self._veri.get(anahtar, varsayilan)
@@ -333,3 +366,14 @@ class ConfigManager:
         if not isinstance(ham, list):
             return []
         return [str(x) if x else "" for x in ham]
+
+
+def kamera_rtsp(kamera: dict[str, Any] | None, prefer_sub: bool = True) -> str:
+    """Kameranın canlı RTSP adresini döndürür (sub tercih)."""
+    if not kamera:
+        return ""
+    sub = str(kamera.get("sub_url") or "").strip()
+    main = str(kamera.get("main_url") or "").strip()
+    if prefer_sub and sub:
+        return sub
+    return main or sub

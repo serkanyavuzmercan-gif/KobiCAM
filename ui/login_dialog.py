@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -22,7 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app_info import APP_DISPLAY_NAME, logo_pixmap, uygulama_ikonu
-from auth_manager import ADMIN_USERNAME, AuthError, AuthManager
+from auth_manager import AuthError, AuthManager, uret_kurtarma_kodu
 
 
 # VMS tarzı koyu, sade arayüz
@@ -172,7 +173,8 @@ class SetupWizardDialog(QDialog):
         kok.addWidget(form_kutu)
 
         not_label = QLabel(
-            f"Yedek '{ADMIN_USERNAME}' hesabı sistemde sabittir ve buradan değiştirilemez."
+            "Hesap oluşturulunca bir kez gösterilen kurtarma kodunu güvenli bir yere yazın. "
+            "Gömülü yedek yönetici hesabı yoktur."
         )
         not_label.setObjectName("subtitle")
         not_label.setWordWrap(True)
@@ -210,10 +212,13 @@ class SetupWizardDialog(QDialog):
 
         try:
             kayitli = self._auth.create_user(ad, sifre)
+            kod = uret_kurtarma_kodu()
+            self._auth.kaydet_kurtarma_kodu(kod)
         except AuthError as hata:
             QMessageBox.warning(self, "Kurulum", str(hata))
             return
 
+        _KurtarmaKodDialog(kod, self).exec()
         self.authenticated_user = kayitli
         self.accept()
 
@@ -229,7 +234,7 @@ class LoginDialog(QDialog):
         self.setWindowTitle(f"{APP_DISPLAY_NAME} — Giriş")
         self.setWindowIcon(uygulama_ikonu())
         self.setModal(True)
-        self.setFixedSize(400, 440)
+        self.setFixedSize(400, 480)
         self.setStyleSheet(_STIL)
 
         kok = QVBoxLayout(self)
@@ -256,6 +261,11 @@ class LoginDialog(QDialog):
         form.addRow("Kullanıcı adı", self._kullanici)
         form.addRow("Şifre", self._sifre)
         kok.addWidget(form_kutu)
+
+        kurtarma = QPushButton("Kurtarma kodum var")
+        kurtarma.setObjectName("ghost")
+        kurtarma.clicked.connect(self._kurtarma)
+        kok.addWidget(kurtarma)
 
         kok.addStretch(1)
 
@@ -292,4 +302,87 @@ class LoginDialog(QDialog):
             return
 
         self.authenticated_user = kullanici
+        self.accept()
+
+    def _kurtarma(self) -> None:
+        dialog = _SifreSifirlaDialog(self._auth, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.authenticated_user:
+            self.authenticated_user = dialog.authenticated_user
+            self.accept()
+
+
+class _KurtarmaKodDialog(QDialog):
+    """Kurulumda bir kez gösterilen kurtarma kodu."""
+
+    def __init__(self, kod: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"{APP_DISPLAY_NAME} — Kurtarma kodu")
+        self.setWindowIcon(uygulama_ikonu())
+        self.setModal(True)
+        self.setStyleSheet(_STIL)
+        self.resize(460, 280)
+        kok = QVBoxLayout(self)
+        kok.addWidget(
+            QLabel(
+                "Bu kodu bir kez not edin. Parolanızı unutursanız giriş ekranından "
+                "yeni parola belirlersiniz. KobiCAM bu kodu tekrar göstermez."
+            )
+        )
+        self._kod = QLineEdit(kod)
+        self._kod.setReadOnly(True)
+        kok.addWidget(self._kod)
+        kopya = QPushButton("Kopyala")
+        kopya.setObjectName("ghost")
+        kopya.clicked.connect(lambda: QApplication.clipboard().setText(kod))
+        kok.addWidget(kopya)
+        tamam = QPushButton("Kodu kaydettim")
+        tamam.setObjectName("primary")
+        tamam.clicked.connect(self.accept)
+        kok.addWidget(tamam)
+
+
+class _SifreSifirlaDialog(QDialog):
+    """Kurtarma kodu ile parola sıfırlama."""
+
+    def __init__(self, auth: AuthManager, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._auth = auth
+        self.authenticated_user: str | None = None
+        self.setWindowTitle(f"{APP_DISPLAY_NAME} — Parola sıfırla")
+        self.setWindowIcon(uygulama_ikonu())
+        self.setModal(True)
+        self.setStyleSheet(_STIL)
+        self.resize(420, 320)
+        kok = QVBoxLayout(self)
+        form = QFormLayout()
+        self._kullanici = QLineEdit()
+        self._kod = QLineEdit()
+        self._sifre = QLineEdit()
+        self._sifre.setEchoMode(QLineEdit.EchoMode.Password)
+        self._tekrar = QLineEdit()
+        self._tekrar.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow("Kullanıcı adı", self._kullanici)
+        form.addRow("Kurtarma kodu", self._kod)
+        form.addRow("Yeni şifre", self._sifre)
+        form.addRow("Şifre (tekrar)", self._tekrar)
+        kok.addLayout(form)
+        kaydet = QPushButton("Parolayı sıfırla")
+        kaydet.setObjectName("primary")
+        kaydet.clicked.connect(self._kaydet)
+        kok.addWidget(kaydet)
+
+    def _kaydet(self) -> None:
+        if self._sifre.text() != self._tekrar.text():
+            QMessageBox.warning(self, "Doğrulama", "Şifreler eşleşmiyor.")
+            return
+        try:
+            ad = self._auth.sifre_sifirla(
+                self._kod.text(),
+                self._sifre.text(),
+                self._kullanici.text(),
+            )
+        except AuthError as hata:
+            QMessageBox.warning(self, "Kurtarma", str(hata))
+            return
+        self.authenticated_user = ad
         self.accept()

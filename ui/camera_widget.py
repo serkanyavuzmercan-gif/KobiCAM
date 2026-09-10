@@ -406,8 +406,10 @@ class CameraWidget(QWidget):
             return
         worker.request_stop()
         if wait:
-            worker.wait(3000)
-            worker.deleteLater()
+            if worker.wait(3000):
+                worker.deleteLater()
+            else:
+                worker.finished.connect(worker.deleteLater)
         else:
             worker.finished.connect(worker.deleteLater)
 

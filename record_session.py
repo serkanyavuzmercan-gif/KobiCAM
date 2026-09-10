@@ -8,25 +8,20 @@ bu yüzden MP4'te ses AAC'ye çevrilir. MKV'de ses de kopyalanır.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+from process_util import ffmpeg_kapat
+from utils.path_helper import get_ffmpeg_path
+
 
 def ffmpeg_yolu() -> str | None:
-    """PATH veya imageio-ffmpeg paketindeki ikiliyi döndürür."""
-    bulunan = shutil.which("ffmpeg")
-    if bulunan:
-        return bulunan
-    try:
-        import imageio_ffmpeg
-
-        return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        return None
+    """PATH, PyInstaller paketi veya imageio-ffmpeg içindeki ikiliyi döndürür."""
+    return get_ffmpeg_path()
 
 
 class RecordSession(QObject):
@@ -116,6 +111,13 @@ class RecordSession(QObject):
             self._proc = None
             return False
 
+        if self._proc.stderr is not None:
+            threading.Thread(
+                target=self._stderr_bosalt,
+                args=(self._proc,),
+                daemon=True,
+            ).start()
+
         self._yol = hedef
         self._izleyici.start()
         self.state_changed.emit(True)
@@ -128,22 +130,18 @@ class RecordSession(QObject):
         self._proc = None
         if proc is None:
             return
-        if proc.poll() is None:
-            try:
-                if proc.stdin:
-                    proc.stdin.write(b"q")
-                    proc.stdin.flush()
-            except OSError:
-                pass
-            try:
-                proc.wait(timeout=4)
-            except subprocess.TimeoutExpired:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+        ffmpeg_kapat(proc, nazik=True, bekle_q=4.0, bekle_term=2.0)
         self.state_changed.emit(False)
+
+    def _stderr_bosalt(self, proc: subprocess.Popen[bytes]) -> None:
+        if proc.stderr is None:
+            return
+        try:
+            while proc.poll() is None:
+                if not proc.stderr.read(4096):
+                    break
+        except Exception:
+            pass
 
     def _kontrol(self) -> None:
         if self._proc is None:
@@ -159,8 +157,126 @@ class RecordSession(QObject):
                 stderr = self._proc.stderr.read() or b""
         except OSError:
             pass
+        ffmpeg_kapat(self._proc, nazik=False)
         self._proc = None
         self.state_changed.emit(False)
         if kod not in (0, 255):
             mesaj = stderr.decode("utf-8", errors="replace").strip()
             self.failed.emit(mesaj or f"Kayıt süreci hata kodu {kod} ile çıktı.")
+
+
+class SegmentRecorder(QObject):
+    """Seçili kameralar için arka plan segment kaydı (Drive senkronu)."""
+
+    segment_ready = pyqtSignal(str, str)  # camera_id, dosya yolu
+    failed = pyqtSignal(str)
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._surecler: dict[str, subprocess.Popen[bytes]] = {}
+        self._klasorler: dict[str, Path] = {}
+        self._bilinen: dict[str, set[str]] = {}
+        self._izleyici = QTimer(self)
+        self._izleyici.setInterval(4000)
+        self._izleyici.timeout.connect(self._tara)
+
+    def start_cameras(self, kameralar: list[dict], kok: Path, sure: int) -> None:
+        self.stop()
+        ffmpeg = ffmpeg_yolu()
+        if not ffmpeg:
+            self.failed.emit("FFmpeg bulunamadı; bulut kaydı başlatılamadı.")
+            return
+        from config_manager import kamera_rtsp
+
+        bayrak = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+        sure = max(60, int(sure or 300))
+        for kam in kameralar:
+            kid = str(kam.get("id") or "")
+            url = kamera_rtsp(kam, prefer_sub=True)
+            if not kid or not url:
+                continue
+            hedef = kok / kid
+            hedef.mkdir(parents=True, exist_ok=True)
+            sablon = str(hedef / "%Y%m%d_%H%M%S.mp4")
+            komut = [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                url,
+                "-c:v",
+                "copy",
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a:0?",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "64k",
+                "-f",
+                "segment",
+                "-segment_time",
+                str(sure),
+                "-reset_timestamps",
+                "1",
+                "-strftime",
+                "1",
+                sablon,
+            ]
+            try:
+                proc = subprocess.Popen(
+                    komut,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=bayrak,
+                )
+            except OSError as hata:
+                self.failed.emit(f"Segment kaydı başlatılamadı: {hata}")
+                continue
+            self._surecler[kid] = proc
+            self._klasorler[kid] = hedef
+            self._bilinen[kid] = {p.name for p in hedef.glob("*.mp4")}
+        if self._surecler:
+            self._izleyici.start()
+
+    def stop(self) -> None:
+        self._izleyici.stop()
+        for kid, proc in list(self._surecler.items()):
+            ffmpeg_kapat(proc, nazik=True, bekle_q=3.0, bekle_term=2.0)
+            self._kapananlari_yayinla(kid, son=True)
+        self._surecler.clear()
+        self._klasorler.clear()
+        self._bilinen.clear()
+
+    def _tara(self) -> None:
+        for kid in list(self._surecler):
+            proc = self._surecler.get(kid)
+            if proc is not None and proc.poll() is not None:
+                self._kapananlari_yayinla(kid, son=True)
+                self._surecler.pop(kid, None)
+                continue
+            self._kapananlari_yayinla(kid, son=False)
+
+    def _kapananlari_yayinla(self, kid: str, son: bool) -> None:
+        klasor = self._klasorler.get(kid)
+        if klasor is None:
+            return
+        dosyalar = sorted(klasor.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        if not dosyalar:
+            return
+        if not son and len(dosyalar) > 0:
+            dosyalar = dosyalar[:-1]
+        bilinen = self._bilinen.setdefault(kid, set())
+        for yol in dosyalar:
+            if yol.name in bilinen:
+                continue
+            if yol.stat().st_size < 1024:
+                continue
+            bilinen.add(yol.name)
+            self.segment_ready.emit(kid, str(yol))
+

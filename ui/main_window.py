@@ -50,17 +50,21 @@ from PyQt6.QtWidgets import (
 from app_info import APP_DISPLAY_NAME, APP_EMAIL, logo_pixmap, uygulama_ikonu
 
 from config_manager import ConfigManager
+from gdrive_sync import GDriveSyncThread, kuyruga_ekle, token_yolu
 from network_scanner import NetworkScanner, yerel_ipv4_adresleri
 from onvif_media import cihaz_baglan, cihaz_tani
+from record_session import SegmentRecorder
 from rtsp_probe import SABLONLAR, kanallari_uret
 from ui.about_dialog import AboutDialog
 from ui.add_camera_dialog import AddCameraDialog
 from ui.add_device_dialog import AddDeviceDialog
+from ui.analytics_dialog import AnalyticsDialog
 from ui.camera_grid import CameraGrid
 from ui.bar_icons import ikon_buyut, ikon_kapat, ikon_kucult
 from ui.camera_widget import KAMERA_MIME
 from ui.help_dialog import HelpDialog, ShortcutsDialog
 from ui.settings_dialog import SettingsDialog
+from web_server import WebServerThread
 
 
 _STIL = """
@@ -295,6 +299,18 @@ class MainWindow(QMainWindow):
         self._slotlari_yukle()
         self._yerlesimi_geri_yukle()
 
+        self._seg_kayit = SegmentRecorder(self)
+        self._seg_kayit.segment_ready.connect(self._bulut_segment)
+        self._seg_kayit.failed.connect(lambda m: self.statusBar().showMessage(m, 8000))
+        self._gdrive_isci: GDriveSyncThread | None = None
+        self._an_isci = None
+        self._web_isci: WebServerThread | None = None
+        self._web_url = ""
+        self._gdrive_imza: tuple | None = None
+        self._an_imza: tuple | None = None
+        self._web_imza: tuple | None = None
+        self._modulleri_uygula()
+
     def _arayuz_kur(self) -> None:
         kok = QWidget()
         kok.setObjectName("root")
@@ -515,6 +531,23 @@ class MainWindow(QMainWindow):
 
         ayarlar = menü.addMenu("Ayarlar")
         self._komut(ayarlar, "Tercihler…", "Ctrl+,", self._ayarlari_ac)
+
+        self._menu_bulut = menü.addMenu("Bulut")
+        self._komut(self._menu_bulut, "Drive ayarları…", "", self._ayarlari_ac)
+        self._aksiyon_gdrive_durum = self._komut(
+            self._menu_bulut, "Drive durumu", "", self._gdrive_durum
+        )
+
+        self._menu_analitik = menü.addMenu("Analitik")
+        self._aksiyon_analitik = self._komut(
+            self._menu_analitik, "İnsan sayımı…", "Ctrl+Shift+A", self._analitik_ac
+        )
+
+        self._menu_uzak = menü.addMenu("Uzak izleme")
+        self._aksiyon_web = self._komut(
+            self._menu_uzak, "Portal adresini göster", "Ctrl+Shift+W", self._web_adres
+        )
+        self._menu_modulleri_guncelle()
 
         yardim = menü.addMenu("Yardım")
         self._komut(yardim, "Nasıl çalışır?", "F1", self._yardim_ac)
@@ -741,6 +774,174 @@ class MainWindow(QMainWindow):
         sayi = int(self._config.get("grid_layout", 4) or 4)
         self._duzen_sec(sayi)
         self._kalite_aksiyon_isaretle(self._config.display_quality())
+        self._modulleri_uygula()
+
+    def _bulut_segment(self, kamera_id: str, yol: str) -> None:
+        kuyruga_ekle(kamera_id, yol)
+        self.statusBar().showMessage(f"Bulut kuyruğu: {yol}", 4000)
+
+    def _gdrive_durum(self) -> None:
+        bagli = token_yolu().is_file()
+        from gdrive_sync import kuyruk_sayisi
+
+        n = kuyruk_sayisi()
+        acik = bool(self._config.get("gdrive_enabled"))
+        QMessageBox.information(
+            self,
+            "Google Drive",
+            f"Modül: {'açık' if acik else 'kapalı'}\n"
+            f"OAuth: {'bağlı' if bagli else 'yok'}\n"
+            f"Kuyruk: {n} dosya",
+        )
+
+    def _analitik_ac(self) -> None:
+        self._an_imza = None
+        self._analitik_durdur()
+        AnalyticsDialog(self._config, self).exec()
+        self._analitik_uygula()
+        self._menu_modulleri_guncelle()
+
+    def _web_adres(self) -> None:
+        if not self._config.get("web_enabled"):
+            QMessageBox.information(self, "Uzak izleme", "Ayarlar’dan web portalını açın.")
+            return
+        url = self._web_url or f"http://127.0.0.1:{int(self._config.get('web_port') or 8765)}"
+        QMessageBox.information(self, "Uzak izleme", f"Tarayıcı adresi:\n{url}")
+
+    def _menu_modulleri_guncelle(self) -> None:
+        cfg = self._config
+        if hasattr(self, "_menu_bulut"):
+            self._menu_bulut.setEnabled(True)
+            self._aksiyon_gdrive_durum.setEnabled(True)
+        if hasattr(self, "_menu_analitik"):
+            self._menu_analitik.setEnabled(bool(cfg.get("analytics_enabled")))
+            self._aksiyon_analitik.setEnabled(bool(cfg.get("analytics_enabled")))
+        if hasattr(self, "_menu_uzak"):
+            self._menu_uzak.setEnabled(bool(cfg.get("web_enabled")))
+            self._aksiyon_web.setEnabled(bool(cfg.get("web_enabled")))
+
+    def _modulleri_uygula(self) -> None:
+        self._gdrive_uygula()
+        self._analitik_uygula()
+        self._web_uygula()
+        self._menu_modulleri_guncelle()
+
+    def _gdrive_imza_al(self) -> tuple:
+        cfg = self._config
+        return (
+            bool(cfg.get("gdrive_enabled")),
+            tuple(str(x) for x in (cfg.get("gdrive_camera_ids") or [])),
+            int(cfg.get("gdrive_segment_seconds") or 300),
+            str(cfg.get("gdrive_folder_name") or ""),
+        )
+
+    def _an_imza_al(self) -> tuple:
+        cfg = self._config
+        cizgi = cfg.get("analytics_line") or []
+        try:
+            cizgi_t = tuple(float(x) for x in cizgi) if isinstance(cizgi, list) else ()
+        except (TypeError, ValueError):
+            cizgi_t = ()
+        return (
+            bool(cfg.get("analytics_enabled")),
+            str(cfg.get("analytics_camera_id") or ""),
+            cizgi_t,
+            int(cfg.get("analytics_fps") or 5),
+        )
+
+    def _web_imza_al(self) -> tuple:
+        cfg = self._config
+        return (
+            bool(cfg.get("web_enabled")),
+            str(cfg.get("web_bind") or "0.0.0.0"),
+            int(cfg.get("web_port") or 8765),
+            int(cfg.get("web_max_streams") or 4),
+            bool(cfg.get("ngrok_enabled")),
+            str(cfg.get("ngrok_authtoken") or "").strip(),
+        )
+
+    def _gdrive_uygula(self) -> None:
+        imza = self._gdrive_imza_al()
+        if imza == self._gdrive_imza:
+            return
+        self._bulut_durdur()
+        self._gdrive_imza = imza
+        cfg = self._config
+        if not cfg.get("gdrive_enabled"):
+            return
+        ids = [str(x) for x in (cfg.get("gdrive_camera_ids") or [])]
+        kameralar = [c for c in cfg.cameras() if str(c.get("id")) in ids]
+        kok = cfg.media_dir() / "cloud"
+        sure = int(cfg.get("gdrive_segment_seconds") or 300)
+        self._seg_kayit.start_cameras(kameralar, kok, sure)
+        self._gdrive_isci = GDriveSyncThread(cfg, self)
+        self._gdrive_isci.durum.connect(lambda m: self.statusBar().showMessage(m, 5000))
+        self._gdrive_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
+        self._gdrive_isci.start()
+
+    def _analitik_uygula(self) -> None:
+        imza = self._an_imza_al()
+        if imza == self._an_imza:
+            return
+        self._analitik_durdur()
+        self._an_imza = imza
+        cfg = self._config
+        if not cfg.get("analytics_enabled"):
+            return
+        from analytics_worker import AnalyticsWorker
+        from config_manager import kamera_rtsp
+
+        kam = cfg.camera_by_id(str(cfg.get("analytics_camera_id") or ""))
+        cizgi = cfg.get("analytics_line") or []
+        if kam and kamera_rtsp(kam) and isinstance(cizgi, list) and len(cizgi) == 4:
+            self._an_isci = AnalyticsWorker(
+                kam, [float(x) for x in cizgi], int(cfg.get("analytics_fps") or 5), self
+            )
+            self._an_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
+            self._an_isci.start()
+
+    def _web_uygula(self) -> None:
+        imza = self._web_imza_al()
+        if imza == self._web_imza:
+            return
+        self._web_durdur()
+        self._web_imza = imza
+        if not self._config.get("web_enabled"):
+            return
+        self._web_isci = WebServerThread(self._config, self)
+        self._web_isci.url_hazir.connect(self._web_url_al)
+        self._web_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
+        self._web_isci.start()
+
+    def _web_url_al(self, url: str) -> None:
+        self._web_url = url
+        self._config.set("web_last_url", url, kaydet=True)
+        self.statusBar().showMessage(f"Web portal: {url}", 10000)
+
+    def _bulut_durdur(self) -> None:
+        self._seg_kayit.stop()
+        if self._gdrive_isci is not None:
+            self._gdrive_isci.request_stop()
+            self._gdrive_isci.wait(4000)
+            self._gdrive_isci = None
+        self._gdrive_imza = None
+
+    def _analitik_durdur(self) -> None:
+        if self._an_isci is None:
+            return
+        self._an_isci.request_stop()
+        self._an_isci.wait(4000)
+        self._an_isci = None
+        self._an_imza = None
+
+    def _web_durdur(self) -> None:
+        if self._web_isci is None:
+            return
+        self._web_isci.request_stop()
+        self._web_isci.wait(3000)
+        self._web_isci = None
+        self._web_imza = None
+        self._web_url = ""
 
     def _snapshot_bildir(self, yol: str) -> None:
         self.statusBar().showMessage(f"Anlık görüntü kaydedildi: {yol}")
@@ -1337,8 +1538,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._slotlari_kaydet()
+        self._modulleri_durdur_hepsi()
         self._scanner.cancel()
         self._scan_thread.quit()
         self._scan_thread.wait(8000)
         self._izgara.stop_all()
         super().closeEvent(event)
+
+    def _modulleri_durdur_hepsi(self) -> None:
+        self._bulut_durdur()
+        self._analitik_durdur()
+        self._web_durdur()

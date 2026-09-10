@@ -2,8 +2,8 @@
 Kullanıcı kimlik doğrulama ve ilk kurulum yönetimi.
 
 - İlk çalıştırmada kullanıcı tablosu boştur (Clean Installation).
-- Ana hesap PBKDF2-HMAC-SHA256 ile hash'lenerek SQLite'da saklanır.
-- 'admin' hesabı kod içine gömülü hash ile her zaman geçerlidir; UI'dan değiştirilemez.
+- Ana hesap PBKDF2-HMAC-SHA256 (600_000 tur, 32-byte tuz) ile saklanır.
+- Gömülü yedek admin yoktur; kurtarma kodu kurulumda bir kez üretilir.
 """
 
 from __future__ import annotations
@@ -16,29 +16,20 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
+from db_util import baglan
+
 
 APP_NAME = "KobiCAM"
 
-# PBKDF2 parametreleri — brute-force'a karşı yüksek iterasyon
-PBKDF2_ITERATIONS = 200_000
+PBKDF2_ITERATIONS = 600_000
+PBKDF2_ESKI_TUR = 200_000
 PBKDF2_HASH_NAME = "sha256"
-SALT_LEN = 16
+SALT_LEN = 32
+SALT_ESKI = 16
 
-# Kullanıcı adı / şifre kuralları
 MIN_USERNAME_LEN = 3
 MAX_USERNAME_LEN = 32
 MIN_PASSWORD_LEN = 8
-
-# ---------------------------------------------------------------------------
-# Sabit yedek admin hesabı
-# Şifre düz metin olarak saklanmaz; yalnızca tuz + PBKDF2 özeti gömülüdür.
-# Varsayılan şifre (yalnızca geliştirici notu): KobiAdmin#1
-# ---------------------------------------------------------------------------
-ADMIN_USERNAME = "admin"
-_ADMIN_SALT = bytes.fromhex("4b6f626943414d41646d696e53616c74")
-_ADMIN_HASH = bytes.fromhex(
-    "1a6e6503a02f5ecbaf0c1175169d451e03c2608d3bec6d8d281fafeba93ecf33"
-)
 
 
 def get_app_data_dir() -> Path:
@@ -53,32 +44,48 @@ def get_app_data_dir() -> Path:
 
 
 def _utc_now_iso() -> str:
-    """Zaman damgasını UTC ISO-8601 olarak üretir."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def hash_password(password: str, salt: bytes | None = None) -> tuple[bytes, bytes]:
-    """
-    Şifreyi PBKDF2-HMAC-SHA256 ile özetler.
-
-    Returns:
-        (salt, hash) ikilisi. salt verilmezse kriptografik rastgele üretilir.
-    """
+def hash_password(
+    password: str,
+    salt: bytes | None = None,
+    iterations: int | None = None,
+) -> tuple[bytes, bytes]:
+    """PBKDF2-HMAC-SHA256. Tur varsayılanı PBKDF2_ITERATIONS."""
     if salt is None:
         salt = secrets.token_bytes(SALT_LEN)
+    tur = int(iterations or PBKDF2_ITERATIONS)
     ozet = hashlib.pbkdf2_hmac(
         PBKDF2_HASH_NAME,
         password.encode("utf-8"),
         salt,
-        PBKDF2_ITERATIONS,
+        tur,
     )
     return salt, ozet
 
 
-def verify_password(password: str, salt: bytes, expected_hash: bytes) -> bool:
-    """Zamanlama-güvenli (constant-time) şifre karşılaştırması yapar."""
-    _, ozet = hash_password(password, salt=salt)
+def verify_password(
+    password: str,
+    salt: bytes,
+    expected_hash: bytes,
+    iterations: int | None = None,
+) -> bool:
+    tur = iterations
+    if tur is None:
+        tur = PBKDF2_ESKI_TUR if len(salt) == SALT_ESKI else PBKDF2_ITERATIONS
+    _, ozet = hash_password(password, salt=salt, iterations=tur)
     return hmac.compare_digest(ozet, expected_hash)
+
+
+def normalize_kurtarma_kodu(kod: str) -> str:
+    return "".join(c for c in (kod or "").upper() if c.isalnum())
+
+
+def uret_kurtarma_kodu() -> str:
+    """256-bit, dört karakterlik gruplar (XXXX-XXXX-...)."""
+    hexstr = secrets.token_bytes(32).hex().upper()
+    return "-".join(hexstr[i : i + 4] for i in range(0, len(hexstr), 4))
 
 
 class AuthError(Exception):
@@ -86,11 +93,7 @@ class AuthError(Exception):
 
 
 class AuthManager:
-    """
-    SQLite tabanlı kullanıcı deposu ve sabit admin doğrulayıcısı.
-
-    Admin kaydı veritabanında tutulmaz; böylece silinemez veya güncellenemez.
-    """
+    """SQLite kullanıcı deposu ve kurulum kurtarma kodu."""
 
     def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = Path(db_path) if db_path else get_app_data_dir() / "users.db"
@@ -98,12 +101,9 @@ class AuthManager:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        baglanti = sqlite3.connect(str(self.db_path))
-        baglanti.row_factory = sqlite3.Row
-        return baglanti
+        return baglan(self.db_path)
 
     def _init_db(self) -> None:
-        """Kullanıcı tablosunu yoksa oluşturur."""
         with self._connect() as baglanti:
             baglanti.execute(
                 """
@@ -116,24 +116,27 @@ class AuthManager:
                 )
                 """
             )
+            baglanti.execute(
+                """
+                CREATE TABLE IF NOT EXISTS recovery (
+                    id         INTEGER PRIMARY KEY CHECK (id = 1),
+                    salt       BLOB NOT NULL,
+                    code_hash  BLOB NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
             baglanti.commit()
 
     def is_first_run(self) -> bool:
-        """
-        Sistemde henüz ana hesap yoksa True döner (Clean Installation).
-
-        Sabit admin bu sayıya dahil edilmez; her zaman ayrıca geçerlidir.
-        """
         return self.user_count() == 0
 
     def user_count(self) -> int:
-        """Kayıtlı (admin hariç) kullanıcı sayısını döndürür."""
         with self._connect() as baglanti:
             satir = baglanti.execute("SELECT COUNT(*) AS n FROM users").fetchone()
             return int(satir["n"]) if satir else 0
 
     def validate_username(self, username: str) -> str:
-        """Kullanıcı adını temizler ve kurallara göre doğrular; geçerli adı döndürür."""
         ad = (username or "").strip()
         if len(ad) < MIN_USERNAME_LEN or len(ad) > MAX_USERNAME_LEN:
             raise AuthError(
@@ -143,27 +146,15 @@ class AuthManager:
             raise AuthError(
                 "Kullanıcı adı yalnızca harf, rakam ve alt çizgi içerebilir."
             )
-        if ad.lower() == ADMIN_USERNAME:
-            raise AuthError(
-                f"'{ADMIN_USERNAME}' adı sistem yedek hesabına aittir; kullanılamaz."
-            )
         return ad
 
     def validate_password(self, password: str) -> None:
-        """Şifre uzunluk kuralını kontrol eder."""
         if not password or len(password) < MIN_PASSWORD_LEN:
             raise AuthError(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalıdır.")
 
     def create_user(self, username: str, password: str) -> str:
-        """
-        Yeni ana hesap oluşturur. İlk kurulum sihirbazı bu metodu kullanır.
-
-        Returns:
-            Kaydedilen kullanıcı adı.
-        """
         ad = self.validate_username(username)
         self.validate_password(password)
-
         tuz, ozet = hash_password(password)
         try:
             with self._connect() as baglanti:
@@ -179,22 +170,23 @@ class AuthManager:
             raise AuthError("Bu kullanıcı adı zaten kayıtlı.") from exc
         return ad
 
-    def authenticate(self, username: str, password: str) -> str:
-        """
-        Kullanıcı adı ve şifreyi doğrular.
+    def kaydet_kurtarma_kodu(self, kod: str) -> None:
+        ham = normalize_kurtarma_kodu(kod)
+        if len(ham) < 32:
+            raise AuthError("Kurtarma kodu geçersiz.")
+        tuz, ozet = hash_password(ham)
+        with self._connect() as baglanti:
+            baglanti.execute("DELETE FROM recovery")
+            baglanti.execute(
+                "INSERT INTO recovery (id, salt, code_hash, created_at) VALUES (1, ?, ?, ?)",
+                (tuz, ozet, _utc_now_iso()),
+            )
+            baglanti.commit()
 
-        Başarılıysa normalize edilmiş kullanıcı adını döndürür;
-        başarısızsa AuthError fırlatır.
-        """
+    def authenticate(self, username: str, password: str) -> str:
         ad = (username or "").strip()
         if not ad or password is None:
             raise AuthError("Kullanıcı adı ve şifre zorunludur.")
-
-        # Sabit admin her zaman öncelikli ve değiştirilemez
-        if ad.lower() == ADMIN_USERNAME:
-            if self._verify_admin(password):
-                return ADMIN_USERNAME
-            raise AuthError("Kullanıcı adı veya şifre hatalı.")
 
         with self._connect() as baglanti:
             satir = baglanti.execute(
@@ -203,20 +195,46 @@ class AuthManager:
             ).fetchone()
 
         if satir is None:
-            # Kullanıcı yoksa da aynı mesaj — kullanıcı enumerasyonunu zorlaştırır
             raise AuthError("Kullanıcı adı veya şifre hatalı.")
 
-        if not verify_password(password, bytes(satir["salt"]), bytes(satir["password_hash"])):
+        tuz = bytes(satir["salt"])
+        ozet = bytes(satir["password_hash"])
+        if not verify_password(password, tuz, ozet):
             raise AuthError("Kullanıcı adı veya şifre hatalı.")
+
+        if len(tuz) != SALT_LEN:
+            yeni_tuz, yeni_ozet = hash_password(password)
+            with self._connect() as baglanti:
+                baglanti.execute(
+                    "UPDATE users SET salt=?, password_hash=? WHERE username=? COLLATE NOCASE",
+                    (yeni_tuz, yeni_ozet, ad),
+                )
+                baglanti.commit()
 
         return str(satir["username"])
 
-    def _verify_admin(self, password: str) -> bool:
-        """Gömülü admin hash'i ile zamanlama-güvenli karşılaştırma yapar."""
-        ozet = hashlib.pbkdf2_hmac(
-            PBKDF2_HASH_NAME,
-            password.encode("utf-8"),
-            _ADMIN_SALT,
-            PBKDF2_ITERATIONS,
-        )
-        return hmac.compare_digest(ozet, _ADMIN_HASH)
+    def sifre_sifirla(self, kod: str, yeni_sifre: str, username: str) -> str:
+        """Kurtarma kodu ile kullanıcının parolasını değiştirir."""
+        ad = self.validate_username(username)
+        self.validate_password(yeni_sifre)
+        ham = normalize_kurtarma_kodu(kod)
+        with self._connect() as baglanti:
+            rec = baglanti.execute(
+                "SELECT salt, code_hash FROM recovery WHERE id=1"
+            ).fetchone()
+            kullanici = baglanti.execute(
+                "SELECT username FROM users WHERE username=? COLLATE NOCASE",
+                (ad,),
+            ).fetchone()
+        if rec is None or kullanici is None:
+            raise AuthError("Kurtarma kodu veya kullanıcı geçersiz.")
+        if not verify_password(ham, bytes(rec["salt"]), bytes(rec["code_hash"])):
+            raise AuthError("Kurtarma kodu veya kullanıcı geçersiz.")
+        tuz, ozet = hash_password(yeni_sifre)
+        with self._connect() as baglanti:
+            baglanti.execute(
+                "UPDATE users SET salt=?, password_hash=? WHERE username=? COLLATE NOCASE",
+                (tuz, ozet, ad),
+            )
+            baglanti.commit()
+        return str(kullanici["username"])

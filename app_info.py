@@ -14,7 +14,7 @@ from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap
 
 APP_NAME = "KobiCAM"
 APP_DISPLAY_NAME = "KobiCAM VMS"
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.2.0"
 APP_AUTHOR = "Serkan Yavuz Mercan"
 APP_CREDIT = "Serkan Yavuz Mercan tarafından yapılmıştır."
 APP_COPYRIGHT = "Tüm hakları saklıdır."

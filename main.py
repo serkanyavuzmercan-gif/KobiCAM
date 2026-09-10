@@ -21,17 +21,42 @@ if str(_KOK) not in sys.path:
 
 from PyQt6.QtCore import QObject, Qt, QSystemSemaphore, pyqtSignal
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-from PyQt6.QtWidgets import QApplication, QDialog, QWidget
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox, QWidget
 
 from app_info import APP_DISPLAY_NAME, APP_NAME, APP_VERSION, uygulama_ikonu
+from app_log import get_logger, yakalanmamis_kaydet
 from auth_manager import AuthManager
 from ui.login_dialog import LoginDialog, SetupWizardDialog
 from ui.main_window import MainWindow
+from utils.path_helper import configure_ultralytics_offline, ensure_runtime_dirs
 
 
 # Sistem genelinde benzersiz kilit / soket adı
 _APP_KEY = "KobiCAM_VMS_SingleInstance_v1"
 _ACTIVATE_MSG = b"ACTIVATE"
+# Inno Setup AppMutex ile aynı ad (Win32 CreateMutex; QSystemSemaphore yetmez)
+_APP_MUTEX_NAME = "Global\\KobiCAM_VMS_AppMutex"
+_app_mutex_handle = None
+
+
+def _win32_app_mutex() -> None:
+    """Kurulumun çalışan KobiCAM.exe'yi görmesi için süreç boyu mutex tutar."""
+    global _app_mutex_handle
+    if sys.platform != "win32" or _app_mutex_handle:
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.CreateMutexW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_bool,
+            ctypes.c_wchar_p,
+        ]
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        _app_mutex_handle = kernel32.CreateMutexW(None, True, _APP_MUTEX_NAME)
+    except Exception:
+        _app_mutex_handle = None
 
 
 class SingleInstanceGuard(QObject):
@@ -140,8 +165,36 @@ def _pencereyi_one_getir(pencere: QWidget | None) -> None:
             pass
 
 
+def _cökme_kancasi(tur, deger, iz) -> None:
+    yakalanmamis_kaydet(tur, deger, iz)
+    try:
+        from PyQt6.QtWidgets import QMessageBox
+
+        QMessageBox.critical(None, APP_DISPLAY_NAME, f"Beklenmeyen hata:\n{deger}")
+    except Exception:
+        pass
+
+
+def _thread_kanca(args) -> None:
+    yakalanmamis_kaydet(args.exc_type, args.exc_value, args.exc_traceback)
+
+
+def _unraisable(args) -> None:
+    yakalanmamis_kaydet(args.exc_type, args.exc_value, args.exc_traceback)
+
+
 def main() -> int:
     """Uygulama yaşam döngüsü: kilit → kimlik doğrulama → ana pencere."""
+    import threading
+
+    get_logger()
+    ensure_runtime_dirs()
+    configure_ultralytics_offline()
+    _win32_app_mutex()
+    sys.excepthook = _cökme_kancasi
+    threading.excepthook = _thread_kanca
+    sys.unraisablehook = _unraisable
+
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -151,6 +204,14 @@ def main() -> int:
     app.setApplicationVersion(APP_VERSION)
     app.setApplicationDisplayName(APP_DISPLAY_NAME)
     app.setWindowIcon(uygulama_ikonu())
+
+    try:
+        from security.keychain import KeychainError, master_key
+
+        master_key()
+    except KeychainError as hata:
+        QMessageBox.critical(None, APP_DISPLAY_NAME, str(hata))
+        return 1
 
     kilit = SingleInstanceGuard()
     if kilit.is_running:
