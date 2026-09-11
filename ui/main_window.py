@@ -903,7 +903,7 @@ class MainWindow(QMainWindow):
         else:
             self._analitik_hucreleri_guncelle(False, 0)
 
-    def _analitik_sayac(self, giren: int, _cikan: int, _ort: float) -> None:
+    def _analitik_sayac(self, giren: int, _cikan: int, _ort: float, _tekrar: int = 0) -> None:
         self._an_giren = int(giren)
         self._analitik_hucreleri_guncelle(True, self._an_giren)
 

@@ -3,7 +3,7 @@
 Windows için yerel ağ kamera / DVR izleme yazılımı.  
 Local-network camera and DVR monitoring software for Windows.
 
-**Sürüm / Version:** 1.3.0  
+**Sürüm / Version:** 1.3.1  
 **Geliştirici / Author:** Serkan Yavuz Mercan  
 **İletişim / Contact:** [serkanyavuzmercan@gmail.com](mailto:serkanyavuzmercan@gmail.com)
 
@@ -15,12 +15,12 @@ Local-network camera and DVR monitoring software for Windows.
 
 Kurulum dosyası kaynak kodun yanında [Releases](../../releases) sayfasındadır:
 
-- **[KobiCAM-Setup-1.3.0.exe](../../releases/latest)** — Masaüstü VMS, Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.3.1.exe](../../releases/latest)** — Masaüstü VMS, Windows 10/11 (64-bit)
 - **[KobiCAM-Server-Setup-1.0.exe](../../releases/latest)** — Server Gateway (saat yanı), Windows 10/11 (64-bit)
 
 Kurulum sihirbazını çalıştırın. İsterseniz masaüstü kısayolu oluşturun. İlk açılışta kendi kullanıcı hesabınızı tanımlarsınız.
 
-1.3.0 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
+1.3.1 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
 
 ### Ne işe yarar?
 
@@ -38,7 +38,7 @@ KobiCAM, ofis veya işyerindeki **kayıt cihazı (DVR/NVR)** ve IP kameraları a
 - Cihaz IP’si değişince **MAC ile otomatik yeniden bağlanma**
 - Özel pencere çubuğu, klavye kısayolları (Yardım → Klavye kısayolları)
 - **Bulut (Google Drive)** döngüsel segment senkronu (OAuth, isteğe bağlı)
-- **Analitik:** tek kamerada insan sayımı ve kalma süresi; canlı panel ve hücre etiketi
+- **Analitik:** tek kamerada insan sayımı (giren / çıkan / tekrar giriş), turkuaz-mor çizgi, köşe sayacı ve CSV rapor (günlük / haftalık / aylık)
 - **Web / mobil portal:** aynı Wi-Fi veya Tailscale ile uzaktan; QR kod; en fazla 4 yayın
 
 ### Kullanım (kısa)
@@ -71,8 +71,9 @@ Kapsam: `drive.file` (yalnızca uygulamanın oluşturduğu dosyalar). Kota dolar
 Tek kamera, ayrı düşük FPS FFmpeg borusu; ızgara görüntüsü kilitlenmez.
 
 1. **Ayarlar → Analitik** ile açın ve kamerayı seçin.
-2. Üst menüden **Analitik (Ctrl+Shift+A)** penceresinde kare üzerine **iki tıklama** ile sayım çizgisi çizin ve kaydedin.
-3. Giren / çıkan / ortalama kalma süresi `analytics.db` içinde tutulur; Ayarlar’daki canlı panelde son 24 saat özeti vardır.
+2. Üst menüden **Analitik (Ctrl+Shift+A)** penceresinde kare üzerine **iki tıklama** ile sayım çizgisi çizin. Turkuaz taraf giriş, mor taraf çıkıştır; tersse çizgiyi ters yönde yeniden çizin.
+3. Giren / çıkan / tekrar giriş ve kalma süresi `analytics.db` içinde tutulur. **Rapor CSV** ile günlük, haftalık ve aylık Excel çıktısı alınır.
+4. Köşedeki sayaca tıklayınca kutu diğer köşeye geçer.
 
 GPU yoksa CPU’da `yolov8n` ve varsayılan 5 fps kullanılır. Model `assets/yolov8n.pt` içindedir.
 
@@ -105,7 +106,7 @@ build_release.bat
 build_server.bat
 ```
 
-Çıktı: `setup\Output\KobiCAM-Setup-1.3.0.exe` ve `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
+Çıktı: `setup\Output\KobiCAM-Setup-1.3.1.exe` ve `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
 
 ### Lisans
 
@@ -119,12 +120,12 @@ Tüm hakları saklıdır. Serkan Yavuz Mercan.
 
 The Windows installer is published on the [Releases](../../releases) page (not inside the source tree):
 
-- **[KobiCAM-Setup-1.3.0.exe](../../releases/latest)** — Desktop VMS, Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.3.1.exe](../../releases/latest)** — Desktop VMS, Windows 10/11 (64-bit)
 - **[KobiCAM-Server-Setup-1.0.exe](../../releases/latest)** — Server Gateway (system tray), Windows 10/11 (64-bit)
 
 Run the wizard. Optionally create a desktop shortcut. On first launch you create your own user account.
 
-The 1.3.0 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
+The 1.3.1 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
 
 ### What it is
 
@@ -142,7 +143,7 @@ KobiCAM is a video management client for **DVR/NVR recorders** and IP cameras on
 - **MAC-based auto-reconnect** when a device IP changes
 - Custom title bar and keyboard shortcuts (Help → Keyboard shortcuts)
 - **Cloud (Google Drive)** cyclic segment sync (OAuth, optional)
-- **Analytics:** people counting and dwell time; live status panel and cell overlay
+- **Analytics:** people counting (in / out / re-entry), turquoise–purple line, corner counter, CSV daily/weekly/monthly reports
 - **Web / mobile portal:** same Wi-Fi or remote via Tailscale; QR code; up to 4 streams
 
 ### Quick start
@@ -175,8 +176,9 @@ Scope: `drive.file`. If quota is exceeded, the queue pauses and the status bar s
 One camera only, on a separate low-FPS FFmpeg pipe so the live grid does not stall.
 
 1. Enable it under **Settings → Analytics** and pick the camera.
-2. Open **Analytics (Ctrl+Shift+A)**, click twice on the preview to draw the counting line and save it.
-3. In / out / average dwell are stored in `analytics.db`; Settings shows a last-24-hour live summary.
+2. Open **Analytics (Ctrl+Shift+A)** and click twice on the preview to draw the line. Turquoise is the in side, purple is the out side; reverse the clicks if the direction is wrong.
+3. In / out / re-entry and dwell are stored in `analytics.db`. **Report CSV** exports daily, weekly and monthly Excel-ready summaries.
+4. Click the corner counter to move it to another corner.
 
 On CPU, `yolov8n` at 5 fps is the default. The weights file is `assets/yolov8n.pt`.
 
@@ -209,7 +211,7 @@ build_release.bat
 build_server.bat
 ```
 
-Output: `setup\Output\KobiCAM-Setup-1.3.0.exe` and `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
+Output: `setup\Output\KobiCAM-Setup-1.3.1.exe` and `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
 
 ### License
 
