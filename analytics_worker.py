@@ -24,8 +24,8 @@ from utils.path_helper import get_yolo_model_path
 
 _GEN = 640
 _YUK = 360
-_TEKRAR_BEKLE_SN = 15.0
-_CIZGI_MIN_UZAK = 0.04
+_TEKRAR_BEKLE_SN = 2.0
+_CIZGI_MIN_UZAK = 0.02
 _log = get_logger("analytics")
 
 _OLAY_AD = {
@@ -115,7 +115,10 @@ def kesenleri_uygula(
     nokta: tuple[float, float],
     min_uzak: float = _CIZGI_MIN_UZAK,
 ) -> str | None:
-    """Takip edilen merkez çizgiyi net geçtiğinde 'in' / 'out' döner."""
+    """Ayak/merkez çizginin bir tarafından diğerine geçince 'in' / 'out'."""
+    taraf = nokta_taraf(cizgi, nokta[0], nokta[1])
+    if taraf == 0:
+        return None
     once = konum.get(tid)
     if once is None:
         konum[tid] = nokta
@@ -124,10 +127,17 @@ def kesenleri_uygula(
     if yon is None:
         konum[tid] = nokta
         return None
-    if cizgi_uzaklik(cizgi, nokta[0], nokta[1]) < min_uzak:
-        return None
-    konum[tid] = nokta
+    if cizgi_uzaklik(cizgi, nokta[0], nokta[1]) >= min_uzak:
+        konum[tid] = nokta
     return yon
+
+
+def kutu_ayak_nokta(kutu, gen: float, yuk: float) -> tuple[float, float]:
+    """Kutunun alt-orta noktası (ayak); yerdeki çizgiyi göğüs merkezi kaçırır."""
+    x1, _y1, x2, y2 = (float(v) for v in kutu[:4])
+    cx = ((x1 + x2) / 2.0) / max(1.0, float(gen))
+    cy = float(y2) / max(1.0, float(yuk))
+    return (min(1.0, max(0.0, cx)), min(1.0, max(0.0, cy)))
 
 
 def cizgi_uzaklik(cizgi: list[float] | tuple[float, ...], x: float, y: float) -> float:
@@ -203,6 +213,9 @@ def kareye_cizgi(
                 (0, 200, 80),
                 1,
             )
+            ax = int((float(kutu[0]) + float(kutu[2])) / 2)
+            ay = int(kutu[3])
+            cv2.circle(goster, (ax, ay), 4, (0, 255, 255), -1)
     return goster
 
 
@@ -521,6 +534,7 @@ class AnalyticsWorker(QThread):
         self._dwell_n = 0
         self._ilk: dict[int, float] = {}
         self._konum: dict[int, tuple[float, float]] = {}
+        self._konum_orta: dict[int, tuple[float, float]] = {}
         self._sayim: dict[int, dict[str, Any]] = {}
         self._proc = None
 
@@ -625,7 +639,7 @@ class AnalyticsWorker(QThread):
                             takip = sv.ByteTrack(
                                 frame_rate=float(self._fps),
                                 lost_track_buffer=90,
-                                track_activation_threshold=0.25,
+                                track_activation_threshold=0.15,
                                 minimum_consecutive_frames=1,
                             )
                         self.hata.emit("Sayım hazır. Çizgiyi kesen kişiler sayılır.")
@@ -634,6 +648,7 @@ class AnalyticsWorker(QThread):
                     anahtar = tuple(float(x) for x in cizgi)
                     if anahtar != son_cizgi:
                         self._konum.clear()
+                        self._konum_orta.clear()
                         self._sayim.clear()
                         son_cizgi = anahtar
                     sonuclar = model.predict(frame, classes=[0], verbose=False, imgsz=_GEN)
@@ -657,9 +672,15 @@ class AnalyticsWorker(QThread):
                             if xyxy is None or i >= len(xyxy):
                                 continue
                             kutu = xyxy[i]
-                            cx = float((kutu[0] + kutu[2]) / 2) / _GEN
-                            cy = float((kutu[1] + kutu[3]) / 2) / _YUK
-                            yon = kesenleri_uygula(cizgi, self._konum, tid, (cx, cy))
+                            h, w = frame.shape[:2]
+                            ayak = kutu_ayak_nokta(kutu, w, h)
+                            orta = (
+                                min(1.0, max(0.0, float((kutu[0] + kutu[2]) / 2) / max(1, w))),
+                                min(1.0, max(0.0, float((kutu[1] + kutu[3]) / 2) / max(1, h))),
+                            )
+                            yon = kesenleri_uygula(cizgi, self._konum, tid, ayak)
+                            if yon is None:
+                                yon = kesenleri_uygula(cizgi, self._konum_orta, tid, orta)
                             if yon is None:
                                 continue
                             karar = sayim_karar(tid, yon, simdi, self._sayim)
@@ -674,6 +695,7 @@ class AnalyticsWorker(QThread):
                                 olay_yaz(kid, "out", tid, None)
                     for tid, dwell in kaybolan_dwell(self._ilk, gorunen, simdi):
                         self._konum.pop(tid, None)
+                        self._konum_orta.pop(tid, None)
                         st = self._sayim.get(tid)
                         if st is not None:
                             st["icerde"] = False
@@ -701,6 +723,7 @@ class AnalyticsWorker(QThread):
             ffmpeg_kapat(proc, nazik=False, bekle_term=2.0)
             self._ilk.clear()
             self._konum.clear()
+            self._konum_orta.clear()
             self._sayim.clear()
             try:
                 del model

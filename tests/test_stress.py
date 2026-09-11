@@ -74,13 +74,21 @@ def test_kesenleri_uygula_ilk_konum_saymaz() -> None:
     assert kesenleri_uygula(cizgi, konum, 1, (0.8, 0.5)) == "out"
 
 
-def test_kesenleri_cizgiye_yakin_saymaz() -> None:
+def test_kesenleri_cizgi_uzerinde_tarafi_korur() -> None:
     konum: dict[int, tuple[float, float]] = {}
     cizgi = [0.5, 0.0, 0.5, 1.0]
     assert kesenleri_uygula(cizgi, konum, 1, (0.8, 0.5)) is None
-    assert kesenleri_uygula(cizgi, konum, 1, (0.48, 0.5)) is None
+    assert kesenleri_uygula(cizgi, konum, 1, (0.5, 0.5)) is None
     assert konum[1] == (0.8, 0.5)
     assert kesenleri_uygula(cizgi, konum, 1, (0.2, 0.5)) == "in"
+
+
+def test_kutu_ayak_nokta() -> None:
+    from analytics_worker import kutu_ayak_nokta
+
+    cx, cy = kutu_ayak_nokta([10.0, 20.0, 50.0, 180.0], 640, 360)
+    assert cx == pytest.approx(30.0 / 640)
+    assert cy == pytest.approx(180.0 / 360)
 
 
 def test_sayim_karar_tekrar_giris() -> None:
