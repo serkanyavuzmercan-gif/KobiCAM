@@ -1,5 +1,5 @@
 """
-KobiCAM 1.3.1 stres / birim testleri.
+KobiCAM 1.4.0 stres / birim testleri.
 
 Gerçek kamera veya Google hesabı gerekmez.
 Çalıştırma: pip install pytest httpx psutil && python -m pytest tests -q

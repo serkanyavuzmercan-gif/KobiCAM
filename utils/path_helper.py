@@ -38,10 +38,36 @@ def app_data_dir() -> Path:
 
 
 def ensure_runtime_dirs() -> Path:
-    """logs, models, recordings klasörlerini oluşturur."""
+    """logs, models, recordings, faces klasörlerini oluşturur."""
     kok = app_data_dir()
-    for ad in ("logs", "models", "recordings"):
+    for ad in ("logs", "models", "recordings", "faces"):
         (kok / ad).mkdir(parents=True, exist_ok=True)
+    return kok
+
+
+def faces_dir() -> Path:
+    hedef = app_data_dir() / "faces"
+    hedef.mkdir(parents=True, exist_ok=True)
+    return hedef
+
+
+def insightface_root() -> Path:
+    """InsightFace kökü: APPDATA/models/insightface (models/buffalo_s altında)."""
+    kok = models_dir() / "insightface"
+    hedef = kok / "models" / "buffalo_s"
+    hedef.mkdir(parents=True, exist_ok=True)
+    paket = bundle_root() / "assets" / "insightface" / "buffalo_s"
+    gerekli = {"det_500m.onnx", "w600k_mbf.onnx"}
+    if paket.is_dir():
+        for dosya in paket.iterdir():
+            if not dosya.is_file() or dosya.name.lower() not in gerekli:
+                continue
+            kopya = hedef / dosya.name
+            if not kopya.is_file() or kopya.stat().st_size == 0:
+                try:
+                    shutil.copy2(dosya, kopya)
+                except OSError:
+                    pass
     return kok
 
 

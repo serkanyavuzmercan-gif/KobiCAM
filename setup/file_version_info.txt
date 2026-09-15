@@ -4,8 +4,8 @@
 # VSVersionInfo — KobiCAM VMS
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 3, 1, 0),
-    prodvers=(1, 3, 1, 0),
+    filevers=(1, 4, 0, 0),
+    prodvers=(1, 4, 0, 0),
     mask=0x3F,
     flags=0x0,
     OS=0x40004,
@@ -21,12 +21,12 @@ VSVersionInfo(
           [
             StringStruct("CompanyName", "Serkan Yavuz Mercan"),
             StringStruct("FileDescription", "KobiCAM VMS"),
-            StringStruct("FileVersion", "1.3.1"),
+            StringStruct("FileVersion", "1.4.0"),
             StringStruct("InternalName", "KobiCAM"),
             StringStruct("LegalCopyright", "Serkan Yavuz Mercan. Tüm hakları saklıdır."),
             StringStruct("OriginalFilename", "KobiCAM.exe"),
             StringStruct("ProductName", "KobiCAM VMS"),
-            StringStruct("ProductVersion", "1.3.1"),
+            StringStruct("ProductVersion", "1.4.0"),
           ]
         )
       ]

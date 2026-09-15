@@ -18,3 +18,8 @@ setup/Output/
 # Uygulama verisi (geliştirme kopyaları)
 *.db
 config.json
+
+# InsightFace: yalnızca det_500m + w600k_mbf paketlenir (1k3d68 > 100 MB)
+assets/insightface/**/1k3d68.onnx
+assets/insightface/**/2d106det.onnx
+assets/insightface/**/genderage.onnx

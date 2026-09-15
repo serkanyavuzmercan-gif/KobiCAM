@@ -100,7 +100,7 @@ def cizgi_kesisi(
     onceki: tuple[float, float],
     simdi: tuple[float, float],
 ) -> str | None:
-    """Normalize 0–1 çizgiyi kesen hareket: 'in' (sağ→sol) veya 'out' (sol→sağ)."""
+    """Turkuaz (Giriş) taraftan mor (Çıkış) tarafa geçiş = in; tersi = out."""
     t0 = nokta_taraf(cizgi, onceki[0], onceki[1])
     t1 = nokta_taraf(cizgi, simdi[0], simdi[1])
     if t0 == 0 or t1 == 0 or t0 == t1:
@@ -179,7 +179,7 @@ def cizgi_yan_polygon(
     yuk: float,
     kalinlik: float = 18.0,
 ) -> tuple[list[tuple[float, float]], list[tuple[float, float]], tuple[float, float], tuple[float, float]]:
-    """Giriş (sol / turkuaz) ve çıkış (sağ / mor) bant poligonları."""
+    """Giriş bandı (turkuaz, geldikleri taraf) ve çıkış bandı (mor)."""
     x1, y1, x2, y2 = (float(v) for v in cizgi[:4])
     p1 = (x1 * gen, y1 * yuk)
     p2 = (x2 * gen, y2 * yuk)
@@ -187,8 +187,8 @@ def cizgi_yan_polygon(
     uzun = (dx * dx + dy * dy) ** 0.5 or 1.0
     nx = -dy / uzun * kalinlik
     ny = dx / uzun * kalinlik
-    giris = [p1, p2, (p2[0] + nx, p2[1] + ny), (p1[0] + nx, p1[1] + ny)]
-    cikis = [p1, p2, (p2[0] - nx, p2[1] - ny), (p1[0] - nx, p1[1] - ny)]
+    giris = [p1, p2, (p2[0] - nx, p2[1] - ny), (p1[0] - nx, p1[1] - ny)]
+    cikis = [p1, p2, (p2[0] + nx, p2[1] + ny), (p1[0] + nx, p1[1] + ny)]
     return giris, cikis, p1, p2
 
 

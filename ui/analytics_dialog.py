@@ -97,6 +97,7 @@ class _CizgiEtiket(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._noktalar: list[tuple[float, float]] = []
         self._pm = QPixmap()
+        self._cizgi_aktif = True
         self.setStyleSheet("background:#0b0d10; color:#8b95a8;")
         self.setText("Kamera karesi bekleniyor…")
         self._sayac_kutu = _SayacKutu(self)
@@ -107,6 +108,11 @@ class _CizgiEtiket(QLabel):
 
     def set_sayac(self, giren: int, cikan: int, tekrar: int) -> None:
         self._sayac_kutu.guncelle(giren, cikan, tekrar)
+
+    def set_cizgi_aktif(self, aktif: bool) -> None:
+        self._cizgi_aktif = bool(aktif)
+        self._sayac_kutu.setVisible(self._cizgi_aktif)
+        self._ciz()
 
     def bekle(self, metin: str) -> None:
         self._pm = QPixmap()
@@ -135,6 +141,8 @@ class _CizgiEtiket(QLabel):
         return [x1, y1, x2, y2]
 
     def mousePressEvent(self, event) -> None:
+        if not self._cizgi_aktif:
+            return
         if self._pm.isNull() or self.width() < 2 or self.height() < 2:
             return
         pm_w, pm_h = self._pm.width(), self._pm.height()
@@ -165,7 +173,7 @@ class _CizgiEtiket(QLabel):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        if self._noktalar:
+        if self._noktalar and self._cizgi_aktif:
             p = QPainter(goster)
             if len(self._noktalar) >= 2:
                 gw, gh = goster.width(), goster.height()
@@ -221,15 +229,18 @@ class AnalyticsDialog(QDialog):
         baslat = QPushButton("Analizi başlat")
         durdur = QPushButton("Durdur")
         kaydet = QPushButton("Çizgiyi kaydet")
+        yon = QPushButton("Yönü çevir")
         csv_btn = QPushButton("Rapor CSV")
         baslat.clicked.connect(self._baslat)
         durdur.clicked.connect(self._durdur)
         kaydet.clicked.connect(self._cizgi_kaydet)
+        yon.clicked.connect(self._yon_cevir)
         csv_btn.clicked.connect(self._csv_aktar)
         ust.addWidget(self._kamera, 1)
         ust.addWidget(baslat)
         ust.addWidget(durdur)
         ust.addWidget(kaydet)
+        ust.addWidget(yon)
         ust.addWidget(csv_btn)
         kok.addLayout(ust)
 
@@ -239,7 +250,7 @@ class AnalyticsDialog(QDialog):
         kok.addWidget(self._durum)
         self._sayac = QLabel("Ort. kalma: 0 sn")
         kok.addWidget(self._sayac)
-        self._renk_ipucu = QLabel("Turkuaz = giriş tarafı    Mor = çıkış tarafı    (tersse çizgiyi ters yönde yeniden çizin)")
+        self._renk_ipucu = QLabel("Turkuaz taraftan gelen = giren    Mor taraftan gelen = çıkan    (tersse Yönü çevir)")
         self._renk_ipucu.setWordWrap(True)
         self._renk_ipucu.setStyleSheet("color:#8b95a8; font-size:12px;")
         kok.addWidget(self._renk_ipucu)
@@ -284,6 +295,15 @@ class AnalyticsDialog(QDialog):
             self._durum_yaz("Bu kameranın RTSP adresi yok.")
             QMessageBox.warning(self, "Analitik", "Bu kameranın RTSP adresi yok.")
             return
+        yuz_id = str(self._config.get("face_camera_id") or "")
+        if self._config.get("face_enabled") and str(kam.get("id") or "") == yuz_id:
+            self._durum_yaz("Bu kamera yüz tanımada. Sayım için başka kamera seçin.")
+            QMessageBox.warning(
+                self,
+                "Analitik",
+                "Sayım ve yüz tanıma aynı kamerada çalışamaz. Ayarlar → Yüz tanıma sekmesindeki kameradan farklı bir kamera seçin.",
+            )
+            return
         self._durdur(durum_yaz=False)
         self._durum_yaz("Kameraya bağlanılıyor…")
         self._goruntu.bekle("Kameraya bağlanılıyor…")
@@ -321,7 +341,17 @@ class AnalyticsDialog(QDialog):
             self._durum_yaz("Kaydetmek için kareye iki kez tıklayıp çizgi çizin.")
             return
         self._cizgi_canli(cizgi)
-        self._durum_yaz("Çizgi kaydedildi. Turkuaz tarafa gidenler giren, mor tarafa gidenler çıkan.")
+        self._durum_yaz("Çizgi kaydedildi. Turkuaz taraftan gelenler giren, mor taraftan gelenler çıkan.")
+
+    def _yon_cevir(self) -> None:
+        cizgi = self._goruntu.line_norm()
+        if len(cizgi) != 4:
+            self._durum_yaz("Çevirmek için önce çizgi çizin.")
+            return
+        ters = [cizgi[2], cizgi[3], cizgi[0], cizgi[1]]
+        self._goruntu.set_line(ters)
+        self._cizgi_canli(ters)
+        self._durum_yaz("Giriş / çıkış yönü çevrildi.")
 
     def _csv_aktar(self) -> None:
         kam = self._secili()

@@ -11,7 +11,17 @@ YOLO = KOK / "assets" / "yolov8n.pt"
 if not YOLO.is_file():
     raise SystemExit(f"Eksik YOLO ağırlığı (datas): {YOLO}")
 
-datas = [(str(KOK / "assets"), "assets")]
+YUZ_HARIC = {"1k3d68.onnx", "2d106det.onnx", "genderage.onnx"}
+datas = []
+assets = KOK / "assets"
+if assets.is_dir():
+    for yol in assets.rglob("*"):
+        if not yol.is_file():
+            continue
+        if yol.name.lower() in YUZ_HARIC:
+            continue
+        rel = yol.parent.relative_to(KOK).as_posix()
+        datas.append((str(yol), rel))
 web = KOK / "web_static"
 if web.is_dir():
     datas.append((str(web), "web_static"))
@@ -51,6 +61,13 @@ hiddenimports = [
     "utils",
     "utils.path_helper",
     "utils.network_helper",
+    "utils.face_engine",
+    "utils.face_quality",
+    "utils.cleanup",
+    "utils.face_transfer",
+    "database",
+    "database.face_db",
+    "ui.face_manager_dialog",
 ]
 
 for paket in (
@@ -64,6 +81,8 @@ for paket in (
     "fastapi",
     "uvicorn",
     "googleapiclient",
+    "insightface",
+    "onnxruntime",
 ):
     try:
         d, b, h = collect_all(paket)

@@ -125,6 +125,7 @@ class SettingsDialog(QDialog):
         sekmeler.addTab(self._sekme_genel(), "Genel")
         sekmeler.addTab(self._sekme_drive(), "Bulut")
         sekmeler.addTab(self._sekme_analitik(), "Analitik")
+        sekmeler.addTab(self._sekme_yuz(), "Yüz tanıma")
         sekmeler.addTab(self._sekme_web(), "Web / mobil")
         sekmeler.addTab(self._sekme_sunucu(), "Sunucu Bağlantı Durumu")
         kok.addWidget(sekmeler, 1)
@@ -275,7 +276,7 @@ class SettingsDialog(QDialog):
         self._an_fps.setRange(1, 15)
         self._an_fps.setValue(int(cfg.get("analytics_fps") or 5))
         form.addRow(self._an_acik)
-        form.addRow("Analiz kamerası", self._an_kamera)
+        form.addRow("Sayım kamerası", self._an_kamera)
         form.addRow("İşleme FPS", self._an_fps)
         panel = QGroupBox("Canlı durum")
         panel_y = QVBoxLayout(panel)
@@ -287,7 +288,8 @@ class SettingsDialog(QDialog):
             panel_y.addWidget(et)
         form.addRow(panel)
         ipucu = QLabel(
-            "Sayım çizgisini Analitik menüsünden açılan pencerede kare üzerine iki tıklayarak çizin."
+            "Sayım çizgisini Analitik menüsünden (Ctrl+Shift+A) kareye iki tıklayarak çizin. "
+            "Yüz tanıma ayrı sekmededir ve bu kamerada çalışmaz."
         )
         ipucu.setWordWrap(True)
         form.addRow(ipucu)
@@ -330,6 +332,67 @@ class SettingsDialog(QDialog):
         fps = int(self._an_fps.value() or 5) if calisiyor else 0
         yuk = max(0, min(100, int(round((fps / 15.0) * 100)))) if calisiyor else 0
         self._an_yuk.setText(f"YOLOv8n ({cihaz}) — %{yuk} kare işleniyor")
+        if hasattr(self, "_yuz_durum"):
+            self._yuz_canli_yenile()
+
+    def _sekme_yuz(self) -> QWidget:
+        kutu = QWidget()
+        form = QFormLayout(kutu)
+        cfg = self._config
+        self._yuz_acik = QCheckBox("Yüz tanımayı aç")
+        self._yuz_acik.setChecked(bool(cfg.get("face_enabled")))
+        self._yuz_kamera = QComboBox()
+        self._yuz_kamera.addItem("(seçilmedi)", "")
+        hedef = str(cfg.get("face_camera_id") or "")
+        for kam in cfg.cameras():
+            kid = str(kam.get("id") or "")
+            self._yuz_kamera.addItem(str(kam.get("name") or kid), kid)
+        idx = self._yuz_kamera.findData(hedef)
+        if idx >= 0:
+            self._yuz_kamera.setCurrentIndex(idx)
+        self._yuz_fps = QSpinBox()
+        self._yuz_fps.setRange(1, 15)
+        self._yuz_fps.setValue(int(cfg.get("face_fps") or 5))
+        form.addRow(self._yuz_acik)
+        form.addRow("Yüz kamerası", self._yuz_kamera)
+        form.addRow("İşleme FPS", self._yuz_fps)
+        panel = QGroupBox("Canlı durum")
+        panel_y = QVBoxLayout(panel)
+        self._yuz_durum = QLabel("Durduruldu")
+        panel_y.addWidget(self._yuz_durum)
+        form.addRow(panel)
+        kisiler = QPushButton("Kişileri yönet")
+        kisiler.clicked.connect(self._kisiler_ac)
+        form.addRow(kisiler)
+        ipucu = QLabel(
+            "Kutular ve isimler seçilen kamera hücresinde görünür. "
+            "Sayım ile aynı kamera kullanılamaz. Tanımsız yüzlere isim vermek için "
+            "Kişi ve Yüz Yönetimi (Ctrl+Shift+F)."
+        )
+        ipucu.setWordWrap(True)
+        form.addRow(ipucu)
+        return kutu
+
+    def _yuz_canli_yenile(self) -> None:
+        parent = self.parent()
+        isci = getattr(parent, "_yuz_isci", None)
+        calisiyor = isci is not None and isci.isRunning()
+        if calisiyor:
+            self._yuz_durum.setText("Çalışıyor")
+            self._yuz_durum.setStyleSheet("color: #5dca7a; font-weight: 700;")
+        else:
+            self._yuz_durum.setText("Durduruldu")
+            self._yuz_durum.setStyleSheet("color: #e07070; font-weight: 700;")
+
+    def _kisiler_ac(self) -> None:
+        from ui.face_manager_dialog import FaceManagerDialog
+
+        dlg = FaceManagerDialog(self)
+        parent = self.parent()
+        fn = getattr(parent, "_yuz_galeri_yenile", None)
+        if callable(fn):
+            dlg.galeri_degisti.connect(fn)
+        dlg.exec()
 
     def _sekme_web(self) -> QWidget:
         kutu = QWidget()
@@ -497,6 +560,21 @@ class SettingsDialog(QDialog):
         QMessageBox.information(self, "Google Drive", "Google hesabı bağlandı.")
 
     def _kaydet(self) -> None:
+        from config_manager import sayim_yuz_cakisiyor
+
+        if sayim_yuz_cakisiyor(
+            self._an_acik.isChecked(),
+            str(self._an_kamera.currentData() or ""),
+            self._yuz_acik.isChecked(),
+            str(self._yuz_kamera.currentData() or ""),
+        ):
+            QMessageBox.warning(
+                self,
+                "Kamera çakışması",
+                "Sayım ve yüz tanıma aynı kamerada çalışamaz. "
+                "Yüz tanıma sekmesinde farklı bir kamera seçin.",
+            )
+            return
         self._config.set("grid_layout", int(self._izgara.currentData()), kaydet=False)
         self._config.set("record_folder", self._klasor.text().strip(), kaydet=False)
         self._config.set("snapshot_folder", self._snap_klasor.text().strip(), kaydet=False)
@@ -522,6 +600,9 @@ class SettingsDialog(QDialog):
         self._config.set("analytics_enabled", self._an_acik.isChecked(), kaydet=False)
         self._config.set("analytics_camera_id", str(self._an_kamera.currentData() or ""), kaydet=False)
         self._config.set("analytics_fps", int(self._an_fps.value()), kaydet=False)
+        self._config.set("face_enabled", self._yuz_acik.isChecked(), kaydet=False)
+        self._config.set("face_camera_id", str(self._yuz_kamera.currentData() or ""), kaydet=False)
+        self._config.set("face_fps", int(self._yuz_fps.value()), kaydet=False)
 
         self._config.set("web_bind", self._web_bind.text().strip() or "0.0.0.0", kaydet=False)
         self._config.set("web_port", int(self._web_port.value()), kaydet=False)

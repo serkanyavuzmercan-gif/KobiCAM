@@ -1,0 +1,1 @@
+"""KobiCAM kalıcı veri katmanı."""

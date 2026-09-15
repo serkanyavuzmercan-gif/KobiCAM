@@ -3,7 +3,7 @@
 Windows için yerel ağ kamera / DVR izleme yazılımı.  
 Local-network camera and DVR monitoring software for Windows.
 
-**Sürüm / Version:** 1.3.1  
+**Sürüm / Version:** 1.4.0  
 **Geliştirici / Author:** Serkan Yavuz Mercan  
 **İletişim / Contact:** [serkanyavuzmercan@gmail.com](mailto:serkanyavuzmercan@gmail.com)
 
@@ -15,12 +15,12 @@ Local-network camera and DVR monitoring software for Windows.
 
 Kurulum dosyası kaynak kodun yanında [Releases](../../releases) sayfasındadır:
 
-- **[KobiCAM-Setup-1.3.1.exe](../../releases/latest)** — Masaüstü VMS, Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.4.0.exe](../../releases/latest)** — Masaüstü VMS, Windows 10/11 (64-bit)
 - **[KobiCAM-Server-Setup-1.0.exe](../../releases/latest)** — Server Gateway (saat yanı), Windows 10/11 (64-bit)
 
 Kurulum sihirbazını çalıştırın. İsterseniz masaüstü kısayolu oluşturun. İlk açılışta kendi kullanıcı hesabınızı tanımlarsınız.
 
-1.3.1 kurulum paketi YOLOv8 / PyTorch içerir (~330 MB). Drive, analitik ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
+1.4.0 kurulum paketi YOLOv8 / PyTorch ve yüz modellerini içerir. Drive, analitik, yüz tanıma ve web portal **varsayılan kapalıdır**; Ayarlar’dan açılır.
 
 ### Ne işe yarar?
 
@@ -38,7 +38,7 @@ KobiCAM, ofis veya işyerindeki **kayıt cihazı (DVR/NVR)** ve IP kameraları a
 - Cihaz IP’si değişince **MAC ile otomatik yeniden bağlanma**
 - Özel pencere çubuğu, klavye kısayolları (Yardım → Klavye kısayolları)
 - **Bulut (Google Drive)** döngüsel segment senkronu (OAuth, isteğe bağlı)
-- **Analitik:** tek kamerada insan sayımı (giren / çıkan / tekrar giriş), turkuaz-mor çizgi, köşe sayacı ve CSV rapor (günlük / haftalık / aylık)
+- **Analitik:** tek kamerada insan sayımı (giren / çıkan / tekrar giriş); yüz tanıma ayrı sekme ve ayrı kamerada; turkuaz-mor çizgi, köşe sayacı, CSV rapor, kişi yönetimi
 - **Web / mobil portal:** aynı Wi-Fi veya Tailscale ile uzaktan; QR kod; en fazla 4 yayın
 
 ### Kullanım (kısa)
@@ -70,12 +70,23 @@ Kapsam: `drive.file` (yalnızca uygulamanın oluşturduğu dosyalar). Kota dolar
 
 Tek kamera, ayrı düşük FPS FFmpeg borusu; ızgara görüntüsü kilitlenmez.
 
-1. **Ayarlar → Analitik** ile açın ve kamerayı seçin.
+1. **Ayarlar → Analitik** ile insan sayımını açın ve **sayım kamerasını** seçin.
 2. Üst menüden **Analitik (Ctrl+Shift+A)** penceresinde kare üzerine **iki tıklama** ile sayım çizgisi çizin. Turkuaz taraf giriş, mor taraf çıkıştır; tersse çizgiyi ters yönde yeniden çizin.
 3. Giren / çıkan / tekrar giriş ve kalma süresi `analytics.db` içinde tutulur. **Rapor CSV** ile günlük, haftalık ve aylık Excel çıktısı alınır.
 4. Köşedeki sayaca tıklayınca kutu diğer köşeye geçer.
 
 GPU yoksa CPU’da `yolov8n` ve varsayılan 5 fps kullanılır. Model `assets/yolov8n.pt` içindedir.
+
+### Yüz tanıma
+
+Canlı ızgara StreamWorker’ı değişmez; yüz işi ayrı FFmpeg borusundadır.
+
+1. **Ayarlar → Yüz tanıma** sekmesinde **sayım kamerasından farklı** bir kamera seçip yüz tanımayı açın.
+2. Kutular ve isimler o kamera hücresinde görünür. Analitik penceresi yalnızca insan sayımı içindir.
+3. Tanınmayan yüzler otomatik `Tanımsız Kişi #ID` olur. **Kişi ve Yüz Yönetimi (Ctrl+Shift+F)** ile isim verin, birleştirin veya silin. **Dışa aktar / İçe aktar** ile yüzleri başka bir KobiCAM PC'sine taşıyın (kamera şifreleri bu pakette yoktur).
+4. Vektörler `%APPDATA%\KobiCAM\faces.db`, kırpılmış yüzler `faces\` altındadır. Model: `assets/insightface/buffalo_s` (onnx) → APPDATA kopyası.
+
+`insightface` ve `onnxruntime` `requirements.txt` içindedir. Ağırlık yoksa yüz tanıma başlamaz; sayım etkilenmez.
 
 ### Web / mobil portal
 
@@ -106,7 +117,7 @@ build_release.bat
 build_server.bat
 ```
 
-Çıktı: `setup\Output\KobiCAM-Setup-1.3.1.exe` ve `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
+Çıktı: `setup\Output\KobiCAM-Setup-1.4.0.exe` ve `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
 
 ### Lisans
 
@@ -120,12 +131,12 @@ Tüm hakları saklıdır. Serkan Yavuz Mercan.
 
 The Windows installer is published on the [Releases](../../releases) page (not inside the source tree):
 
-- **[KobiCAM-Setup-1.3.1.exe](../../releases/latest)** — Desktop VMS, Windows 10/11 (64-bit)
+- **[KobiCAM-Setup-1.4.0.exe](../../releases/latest)** — Desktop VMS, Windows 10/11 (64-bit)
 - **[KobiCAM-Server-Setup-1.0.exe](../../releases/latest)** — Server Gateway (system tray), Windows 10/11 (64-bit)
 
 Run the wizard. Optionally create a desktop shortcut. On first launch you create your own user account.
 
-The 1.3.1 installer bundles YOLOv8 / PyTorch (~330 MB). Drive, analytics and the web portal are **off by default** and enabled in Settings.
+The 1.4.0 installer bundles YOLOv8 / PyTorch and face models. Drive, analytics, face recognition and the web portal are **off by default** and enabled in Settings.
 
 ### What it is
 
@@ -143,7 +154,7 @@ KobiCAM is a video management client for **DVR/NVR recorders** and IP cameras on
 - **MAC-based auto-reconnect** when a device IP changes
 - Custom title bar and keyboard shortcuts (Help → Keyboard shortcuts)
 - **Cloud (Google Drive)** cyclic segment sync (OAuth, optional)
-- **Analytics:** people counting (in / out / re-entry), turquoise–purple line, corner counter, CSV daily/weekly/monthly reports
+- **Analytics:** people counting (in / out / re-entry) and face recognition on **separate cameras**; turquoise–purple line, CSV reports, person manager
 - **Web / mobile portal:** same Wi-Fi or remote via Tailscale; QR code; up to 4 streams
 
 ### Quick start
@@ -182,6 +193,17 @@ One camera only, on a separate low-FPS FFmpeg pipe so the live grid does not sta
 
 On CPU, `yolov8n` at 5 fps is the default. The weights file is `assets/yolov8n.pt`.
 
+### Face recognition
+
+The live grid StreamWorker is unchanged; faces run on a separate FFmpeg pipe.
+
+1. Under **Settings → Face recognition** pick a **different camera** from people counting and enable it.
+2. Boxes and names appear on that camera cell. The Analytics window is counting only.
+3. Unknown faces become `Tanımsız Kişi #ID`. Name, merge, or delete them in **Person & Face Manager (Ctrl+Shift+F)**. Use **Export / Import** to move the gallery to another KobiCAM PC (camera passwords are not included).
+4. Vectors live in `%APPDATA%\KobiCAM\faces.db`; crops under `faces\`. Models: `assets/insightface/buffalo_s` (onnx).
+
+`insightface` and `onnxruntime` are in `requirements.txt`. Without weights, face mode does not start; people counting is unaffected.
+
 ### Web / mobile portal
 
 The stream runs in **KobiCAM Server Gateway** (system tray); closing the desktop VMS does not stop it. `python server_app.py` or `KobiCAM-Server-Setup.exe`. Login uses the KobiCAM username/password. RTSP URLs are never sent to the browser. At most 4 cameras.
@@ -211,7 +233,7 @@ build_release.bat
 build_server.bat
 ```
 
-Output: `setup\Output\KobiCAM-Setup-1.3.1.exe` and `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
+Output: `setup\Output\KobiCAM-Setup-1.4.0.exe` and `setup\Output\KobiCAM-Server-Setup-1.0.exe`.
 
 ### License
 

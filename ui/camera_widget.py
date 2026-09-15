@@ -289,6 +289,8 @@ class CameraWidget(QWidget):
         self._analiz_etiket.hide()
         self._analiz_aktif = False
         self._analiz_giren = 0
+        self._analiz_yuz = False
+        self._yuz_tespitleri: list = []
 
         self.setObjectName("CameraWidget")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -342,6 +344,7 @@ class CameraWidget(QWidget):
             self._overlay.set_ptz_visible(False)
             self._overlay.set_aktif(False)
             self.set_analiz(False)
+            self.set_yuz_aktif(False)
             if self.underMouse():
                 self._cubugu_goster()
             else:
@@ -386,17 +389,34 @@ class CameraWidget(QWidget):
         return not self._prefer_sub
 
     def set_analiz(self, aktif: bool, giren: int = 0) -> None:
-        """Sağ üstte analitik etiketi; yalnızca bu hücre analiz kamerasıysa."""
+        """Sağ üstte sayım etiketi."""
         self._analiz_aktif = bool(aktif)
         self._analiz_giren = int(giren)
-        if self._analiz_aktif:
+        self._analiz_rozet_guncelle()
+
+    def set_yuz_aktif(self, aktif: bool) -> None:
+        self._analiz_yuz = bool(aktif)
+        if not self._analiz_yuz:
+            self._yuz_tespitleri = []
+        self._analiz_rozet_guncelle()
+        self.update()
+
+    def set_yuz_tespitleri(self, tespitler: list | None) -> None:
+        self._yuz_tespitleri = list(tespitler or [])
+        self.update()
+
+    def _analiz_rozet_guncelle(self) -> None:
+        if self._analiz_yuz:
+            self._analiz_etiket.setText("YÜZ TANIMA AKTİF")
+        elif self._analiz_aktif:
             self._analiz_etiket.setText(f"ANALİZ AKTİF | Giren: {self._analiz_giren}")
-            self._analiz_etiket.adjustSize()
-            self._analiz_etiket.show()
-            self._analiz_konumla()
-            self._analiz_etiket.raise_()
         else:
             self._analiz_etiket.hide()
+            return
+        self._analiz_etiket.adjustSize()
+        self._analiz_etiket.show()
+        self._analiz_konumla()
+        self._analiz_etiket.raise_()
 
     def _analiz_konumla(self) -> None:
         if not self._analiz_etiket.isVisible():
@@ -933,6 +953,7 @@ class CameraWidget(QWidget):
             src = self._kaynak_rect().toAlignedRect()
             if not dest.isEmpty() and src.width() > 0 and src.height() > 0:
                 painter.drawPixmap(dest, self._pixmap, src)
+                self._yuz_kutularini_ciz(painter, dest)
         else:
             painter.setPen(QColor("#3d4554"))
             painter.setFont(QFont("Segoe UI", 10))
@@ -975,3 +996,34 @@ class CameraWidget(QWidget):
             painter.setPen(QPen(QColor("#3d9cf0"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(1, 1, self.width() - 2, self.height() - 2)
+
+    def _yuz_kutularini_ciz(self, painter: QPainter, dest: QRect) -> None:
+        if not self._analiz_yuz or not self._yuz_tespitleri or dest.isEmpty():
+            return
+        src = self._kaynak_rect()
+        pw = float(max(1, self._pixmap.width()))
+        ph = float(max(1, self._pixmap.height()))
+        painter.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        for t in self._yuz_tespitleri:
+            bbox = t.get("bbox_norm") or []
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = (float(v) for v in bbox)
+            noktalar = []
+            for nx, ny in ((x1, y1), (x2, y2)):
+                px, py = nx * pw, ny * ph
+                if src.width() < 1 or src.height() < 1:
+                    continue
+                dx = dest.x() + (px - src.x()) / src.width() * dest.width()
+                dy = dest.y() + (py - src.y()) / src.height() * dest.height()
+                noktalar.append((dx, dy))
+            if len(noktalar) != 2:
+                continue
+            (ax, ay), (bx, by) = noktalar
+            renk = QColor(80, 200, 120) if t.get("is_known") else QColor(255, 160, 40)
+            painter.setPen(QPen(renk, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(int(ax), int(ay), int(bx - ax), int(by - ay))
+            ad = str(t.get("name") or "")
+            if ad:
+                painter.drawText(int(ax), max(dest.y() + 12, int(ay) - 4), ad[:42])

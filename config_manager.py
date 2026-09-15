@@ -75,6 +75,9 @@ _VARSAYILANLAR: dict[str, Any] = {
     "analytics_camera_id": "",
     "analytics_line": [],       # [x1, y1, x2, y2] 0–1
     "analytics_fps": 5,
+    "face_enabled": False,
+    "face_camera_id": "",
+    "face_fps": 5,
     "web_enabled": False,
     "web_bind": "0.0.0.0",
     "web_port": 8765,
@@ -107,7 +110,8 @@ class ConfigManager:
             bellege_coz(self._veri)
             self._cihazlari_gocet()
             self._mac_alanini_doldur()
-            if duz:
+            yuz_goc = self._yuz_ayir_gocet()
+            if duz or yuz_goc:
                 self.save()
         except (OSError, json.JSONDecodeError):
             self._veri = deepcopy(_VARSAYILANLAR)
@@ -447,6 +451,36 @@ class ConfigManager:
         if not isinstance(ham, list):
             return []
         return [str(x) if x else "" for x in ham]
+
+    def _yuz_ayir_gocet(self) -> bool:
+        """Eski analytics_mode=face ayarını ayrı yüz sekmesine taşır."""
+        degisti = False
+        if "analytics_mode" in self._veri:
+            if str(self._veri.get("analytics_mode") or "") == "face":
+                if self._veri.get("analytics_enabled"):
+                    self._veri["face_enabled"] = True
+                    self._veri["face_camera_id"] = str(self._veri.get("analytics_camera_id") or "")
+                    try:
+                        self._veri["face_fps"] = int(self._veri.get("analytics_fps") or 5)
+                    except (TypeError, ValueError):
+                        self._veri["face_fps"] = 5
+                    self._veri["analytics_enabled"] = False
+                degisti = True
+            del self._veri["analytics_mode"]
+            degisti = True
+        return degisti
+
+
+def sayim_yuz_cakisiyor(
+    an_acik: bool,
+    an_id: str,
+    yuz_acik: bool,
+    yuz_id: str,
+) -> bool:
+    """Sayım ve yüz tanıma aynı kamera id'sine bağlandıysa True."""
+    a = str(an_id or "")
+    b = str(yuz_id or "")
+    return bool(an_acik and yuz_acik and a and a == b)
 
 
 def kamera_rtsp(kamera: dict[str, Any] | None, prefer_sub: bool = True) -> str:

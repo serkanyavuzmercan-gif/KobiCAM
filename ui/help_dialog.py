@@ -143,7 +143,11 @@ _BOLUMLER: list[tuple[str, str]] = [
         "Tek bir kamerada insan sayısı ve içeride kalma süresi izlenir; diğer hücreler "
         "etkilenmez. Ayarlar’dan Analitik’i açın, üst menüden Analitik’e tıklayın, "
         "kare üzerine iki kez tıklayarak sayım çizgisini çizin. Giren, çıkan ve ortalama "
-        "kalma süresi kaydedilir; Ayarlar’daki canlı panelde son 24 saat özeti görünür.",
+        "kalma süresi kaydedilir; Ayarlar’daki canlı panelde son 24 saat özeti görünür. "
+        "Yüz tanıma ayrı sekmedir (Ayarlar → Yüz tanıma) ve sayım kamerasında çalışmaz. "
+        "Kutular o kamera hücresinde görünür. Tanımsız yüzlere menüden "
+        "Kişi ve Yüz Yönetimi (Ctrl+Shift+F) ile isim verin, birleştirin veya "
+        "Dışa aktar / İçe aktar ile başka PC'ye taşıyın.",
     ),
     (
         "14. Uzak izleme (web / telefon)",
@@ -223,6 +227,7 @@ KISAYOLLAR: list[tuple[str, list[tuple[str, str]]]] = [
         "Analitik / Uzak izleme",
         [
             ("Analitik penceresi", "Ctrl+Shift+A"),
+            ("Kişi ve Yüz Yönetimi", "Ctrl+Shift+F"),
             ("Uzak izleme", "Ctrl+Shift+W"),
         ],
     ),

@@ -64,6 +64,7 @@ from ui.analytics_dialog import AnalyticsDialog
 from ui.camera_grid import CameraGrid
 from ui.bar_icons import ikon_buyut, ikon_kapat, ikon_kucult
 from ui.camera_widget import KAMERA_MIME
+from ui.face_manager_dialog import FaceManagerDialog
 from ui.help_dialog import HelpDialog, ShortcutsDialog
 from ui.settings_dialog import SettingsDialog
 from ui.web_portal_dialog import WebPortalDialog
@@ -335,6 +336,8 @@ class MainWindow(QMainWindow):
         self._an_giren = 0
         self._gdrive_imza: tuple | None = None
         self._an_imza: tuple | None = None
+        self._yuz_isci = None
+        self._yuz_imza: tuple | None = None
         self._modulleri_uygula()
 
     def _arayuz_kur(self) -> None:
@@ -566,6 +569,12 @@ class MainWindow(QMainWindow):
         self._aksiyon_analitik.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self._aksiyon_analitik.triggered.connect(self._analitik_ac)
         menü.addAction(self._aksiyon_analitik)
+
+        self._aksiyon_yuz = QAction("Kişi ve Yüz Yönetimi", self)
+        self._aksiyon_yuz.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        self._aksiyon_yuz.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self._aksiyon_yuz.triggered.connect(self._yuz_yonetimi_ac)
+        menü.addAction(self._aksiyon_yuz)
 
         self._aksiyon_web = QAction("Uzak izleme", self)
         self._aksiyon_web.setShortcut(QKeySequence("Ctrl+Shift+W"))
@@ -828,12 +837,15 @@ class MainWindow(QMainWindow):
             self._aksiyon_ayarlar.setEnabled(True)
         if hasattr(self, "_aksiyon_analitik"):
             self._aksiyon_analitik.setEnabled(True)
+        if hasattr(self, "_aksiyon_yuz"):
+            self._aksiyon_yuz.setEnabled(True)
         if hasattr(self, "_aksiyon_web"):
             self._aksiyon_web.setEnabled(True)
 
     def _modulleri_uygula(self) -> None:
         self._gdrive_uygula()
         self._analitik_uygula()
+        self._yuz_uygula()
         self._menu_modulleri_guncelle()
 
     def _gdrive_imza_al(self) -> tuple:
@@ -857,6 +869,14 @@ class MainWindow(QMainWindow):
             str(cfg.get("analytics_camera_id") or ""),
             cizgi_t,
             int(cfg.get("analytics_fps") or 5),
+        )
+
+    def _yuz_imza_al(self) -> tuple:
+        cfg = self._config
+        return (
+            bool(cfg.get("face_enabled")),
+            str(cfg.get("face_camera_id") or ""),
+            int(cfg.get("face_fps") or 5),
         )
 
     def _gdrive_uygula(self) -> None:
@@ -888,13 +908,23 @@ class MainWindow(QMainWindow):
         if not cfg.get("analytics_enabled"):
             return
         from analytics_worker import AnalyticsWorker
-        from config_manager import kamera_rtsp
+        from config_manager import kamera_rtsp, sayim_yuz_cakisiyor
 
         kam = cfg.camera_by_id(str(cfg.get("analytics_camera_id") or ""))
+        if sayim_yuz_cakisiyor(
+            True,
+            str(cfg.get("analytics_camera_id") or ""),
+            bool(cfg.get("face_enabled")),
+            str(cfg.get("face_camera_id") or ""),
+        ):
+            self.statusBar().showMessage("Sayım, yüz tanıma kamerasında çalışmaz. Ayarlar’dan ayırın.", 8000)
+            self._analitik_hucreleri_guncelle(False, 0)
+            return
+        fps = int(cfg.get("analytics_fps") or 5)
         cizgi = cfg.get("analytics_line") or []
         if kam and kamera_rtsp(kam) and isinstance(cizgi, list) and len(cizgi) == 4:
             self._an_isci = AnalyticsWorker(
-                kam, [float(x) for x in cizgi], int(cfg.get("analytics_fps") or 5), self
+                kam, [float(x) for x in cizgi], fps, self
             )
             self._an_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
             self._an_isci.sayac.connect(self._analitik_sayac)
@@ -902,6 +932,38 @@ class MainWindow(QMainWindow):
             self._analitik_hucreleri_guncelle(True, 0)
         else:
             self._analitik_hucreleri_guncelle(False, 0)
+
+    def _yuz_uygula(self) -> None:
+        imza = self._yuz_imza_al()
+        if imza == self._yuz_imza:
+            return
+        self._yuz_durdur()
+        self._yuz_imza = imza
+        cfg = self._config
+        if not cfg.get("face_enabled"):
+            return
+        from config_manager import kamera_rtsp, sayim_yuz_cakisiyor
+        from utils.face_engine import FaceWorker
+
+        kid = str(cfg.get("face_camera_id") or "")
+        if sayim_yuz_cakisiyor(
+            bool(cfg.get("analytics_enabled")),
+            str(cfg.get("analytics_camera_id") or ""),
+            True,
+            kid,
+        ):
+            self.statusBar().showMessage("Yüz tanıma, sayım kamerasında çalışmaz. Ayarlar’dan ayırın.", 8000)
+            self._yuz_hucreleri_guncelle(False)
+            return
+        kam = cfg.camera_by_id(kid)
+        if not kam or not kamera_rtsp(kam):
+            self._yuz_hucreleri_guncelle(False)
+            return
+        self._yuz_isci = FaceWorker(kam, int(cfg.get("face_fps") or 5), self)
+        self._yuz_isci.hata.connect(lambda m: self.statusBar().showMessage(m, 8000))
+        self._yuz_isci.tespitler.connect(self._yuz_tespit_guncelle)
+        self._yuz_isci.start()
+        self._yuz_hucreleri_guncelle(True)
 
     def _analitik_sayac(self, giren: int, _cikan: int, _ort: float, _tekrar: int = 0) -> None:
         self._an_giren = int(giren)
@@ -914,6 +976,36 @@ class MainWindow(QMainWindow):
             kam = hucre.camera or {}
             bu = calisiyor and str(kam.get("id") or "") == kid
             hucre.set_analiz(bu, giren if bu else 0)
+
+    def _yuz_hucreleri_guncelle(self, aktif: bool) -> None:
+        kid = str(self._config.get("face_camera_id") or "")
+        calisiyor = bool(aktif and self._yuz_isci is not None and self._yuz_isci.isRunning())
+        for hucre in self._izgara.widgets():
+            kam = hucre.camera or {}
+            bu = calisiyor and str(kam.get("id") or "") == kid
+            hucre.set_yuz_aktif(bu)
+            if not bu:
+                hucre.set_yuz_tespitleri([])
+
+    def _yuz_tespit_guncelle(self, tespitler) -> None:
+        kid = str(self._config.get("face_camera_id") or "")
+        for hucre in self._izgara.widgets():
+            kam = hucre.camera or {}
+            if str(kam.get("id") or "") == kid:
+                hucre.set_yuz_tespitleri(tespitler if isinstance(tespitler, list) else [])
+            else:
+                hucre.set_yuz_tespitleri([])
+
+    def _yuz_yonetimi_ac(self) -> None:
+        dlg = FaceManagerDialog(self)
+        dlg.galeri_degisti.connect(self._yuz_galeri_yenile)
+        dlg.exec()
+
+    def _yuz_galeri_yenile(self) -> None:
+        isci = self._yuz_isci
+        fn = getattr(isci, "galeri_yenile", None)
+        if callable(fn):
+            fn()
 
     def _bulut_durdur(self) -> None:
         self._seg_kayit.stop()
@@ -933,6 +1025,16 @@ class MainWindow(QMainWindow):
         self._an_imza = None
         self._an_giren = 0
         self._analitik_hucreleri_guncelle(False, 0)
+
+    def _yuz_durdur(self) -> None:
+        if self._yuz_isci is None:
+            self._yuz_hucreleri_guncelle(False)
+            return
+        self._yuz_isci.request_stop()
+        self._yuz_isci.wait(4000)
+        self._yuz_isci = None
+        self._yuz_imza = None
+        self._yuz_hucreleri_guncelle(False)
 
     def _snapshot_bildir(self, yol: str) -> None:
         self.statusBar().showMessage(f"Anlık görüntü kaydedildi: {yol}")
@@ -1514,6 +1616,8 @@ class MainWindow(QMainWindow):
                 self._izgara.assign_camera(i, kamera)
         aktif = self._an_isci is not None and self._an_isci.isRunning()
         self._analitik_hucreleri_guncelle(aktif, getattr(self, "_an_giren", 0))
+        yuz_aktif = self._yuz_isci is not None and self._yuz_isci.isRunning()
+        self._yuz_hucreleri_guncelle(yuz_aktif)
 
     def _liste_menu(self, pos) -> None:
         oge = self._liste.itemAt(pos)
@@ -1561,3 +1665,4 @@ class MainWindow(QMainWindow):
     def _modulleri_durdur_hepsi(self) -> None:
         self._bulut_durdur()
         self._analitik_durdur()
+        self._yuz_durdur()
